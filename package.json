@@ -1,0 +1,27 @@
+{
+  "name": "sundial",
+  "version": "0.1.0",
+  "description": "Warns you when your code uses deprecated or removed Stripe API features.",
+  "license": "UNLICENSED",
+  "private": true,
+  "bin": {
+    "sundial": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "data"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build",
+    "scan": "node dist/cli.js scan",
+    "test": "npm run build && node --test dist/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2"
+  }
+}

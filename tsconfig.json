@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    // Modern JavaScript output that Node 18+ understands.
+    "target": "ES2022",
+    // CommonJS keeps things simple: plain require() and __dirname work.
+    "module": "commonjs",
+    "rootDir": "src",
+    "outDir": "dist",
+    // Strict mode catches many bugs at compile time. Keep it on.
+    "strict": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "sourceMap": true,
+    // Load the Node.js type definitions (fs, path, process...).
+    "types": ["node"]
+  },
+  "include": ["src"]
+}

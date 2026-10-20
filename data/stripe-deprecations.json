@@ -1,0 +1,132 @@
+{
+  "$comment": "Known Stripe deprecations. Every entry must link to official Stripe docs or changelog. 'patterns' are JavaScript regular expressions (written as strings, so backslashes are doubled). 'removalDate' is null when Stripe hasn't published one. See README for how to add entries.",
+  "deprecations": [
+    {
+      "id": "stripe-sources-api",
+      "deprecated": "Sources API (stripe.sources.* in the Node SDK, or the /v1/sources endpoint)",
+      "patterns": [
+        "\\.sources\\.(create|retrieve|update|verify|listSourceTransactions)\\s*\\(",
+        "/v1/sources\\b"
+      ],
+      "replacement": "PaymentMethods + PaymentIntents (stripe.paymentMethods.*, stripe.paymentIntents.*)",
+      "removalDate": null,
+      "removedInVersion": null,
+      "sourceUrl": "https://docs.stripe.com/sources",
+      "note": "Stripe has deprecated the Sources API and plans to remove support. New integrations can't use it. Migration guide: https://docs.stripe.com/payments/payment-methods/transitioning"
+    },
+    {
+      "id": "stripejs-source-methods",
+      "deprecated": "Stripe.js createSource() / retrieveSource()",
+      "patterns": [
+        "(?<!customers)\\.createSource\\s*\\(",
+        "(?<!customers)\\.retrieveSource\\s*\\("
+      ],
+      "replacement": "Payment Methods API (e.g. stripe.createPaymentMethod() / the Payment Element)",
+      "removalDate": "2026-03-25",
+      "removedInVersion": "2026-03-25.dahlia",
+      "sourceUrl": "https://docs.stripe.com/changelog/dahlia/2026-03-25/remove-legacy-stripejs-methods",
+      "note": "Removed from Stripe.js; calling them throws an error. The lookbehind skips the server-side stripe.customers.createSource(), which is a different method."
+    },
+    {
+      "id": "stripejs-legacy-payment-intent-methods",
+      "deprecated": "Stripe.js handleCardPayment() / confirmPaymentIntent()",
+      "patterns": [
+        "\\bhandleCardPayment\\s*\\(",
+        "\\bconfirmPaymentIntent\\s*\\("
+      ],
+      "replacement": "stripe.confirmCardPayment(clientSecret, { payment_method: { card: cardElement } })",
+      "removalDate": "2026-03-25",
+      "removedInVersion": "2026-03-25.dahlia",
+      "sourceUrl": "https://docs.stripe.com/changelog/dahlia/2026-03-25/remove-legacy-stripejs-methods",
+      "note": "Removed from Stripe.js; calling them throws an error. Note the card element moves inside payment_method.card."
+    },
+    {
+      "id": "stripejs-handle-fpx-payment",
+      "deprecated": "Stripe.js handleFpxPayment()",
+      "patterns": [
+        "\\bhandleFpxPayment\\s*\\("
+      ],
+      "replacement": "stripe.confirmFpxPayment() (identical signature)",
+      "removalDate": "2026-03-25",
+      "removedInVersion": "2026-03-25.dahlia",
+      "sourceUrl": "https://docs.stripe.com/changelog/dahlia/2026-03-25/remove-legacy-stripejs-methods",
+      "note": "Removed from Stripe.js; calling it throws an error."
+    },
+    {
+      "id": "stripejs-legacy-setup-intent-methods",
+      "deprecated": "Stripe.js handleCardSetup() / confirmSetupIntent()",
+      "patterns": [
+        "\\bhandleCardSetup\\s*\\(",
+        "\\bconfirmSetupIntent\\s*\\("
+      ],
+      "replacement": "stripe.confirmCardSetup(clientSecret, { payment_method: { card: cardElement } })",
+      "removalDate": "2026-03-25",
+      "removedInVersion": "2026-03-25.dahlia",
+      "sourceUrl": "https://docs.stripe.com/changelog/dahlia/2026-03-25/remove-legacy-stripejs-methods",
+      "note": "Removed from Stripe.js; calling them throws an error."
+    },
+    {
+      "id": "stripejs-redirect-to-checkout",
+      "deprecated": "Stripe.js redirectToCheckout()",
+      "patterns": [
+        "\\bredirectToCheckout\\s*\\("
+      ],
+      "replacement": "Redirect to the Checkout Session URL yourself (window.location.href = session.url), or use Payment Links / Buy Buttons for client-only integrations",
+      "removalDate": "2025-09-30",
+      "removedInVersion": "2025-09-30.clover",
+      "sourceUrl": "https://docs.stripe.com/changelog/clover/2025-09-30/remove-redirect-to-checkout",
+      "note": "No longer supported for client-only or client-and-server Checkout integrations."
+    },
+    {
+      "id": "stripejs-legacy-bank-elements",
+      "deprecated": "Stripe.js bank Elements: idealBank, fpxBank, epsBank, p24Bank",
+      "patterns": [
+        "\\.create\\s*\\(\\s*['\"`](idealBank|fpxBank|epsBank|p24Bank)['\"`]"
+      ],
+      "replacement": "Payment Element (elements.create('payment'))",
+      "removalDate": "2025-09-30",
+      "removedInVersion": "2025-09-30.clover",
+      "sourceUrl": "https://docs.stripe.com/changelog/clover/2025-09-30/stripejs-deprecated-elements-removal",
+      "note": "References to these elements now cause failures."
+    },
+    {
+      "id": "stripejs-legacy-messaging-elements",
+      "deprecated": "Stripe.js messaging Elements: affirmMessage, afterpayClearpayMessage",
+      "patterns": [
+        "\\.create\\s*\\(\\s*['\"`](affirmMessage|afterpayClearpayMessage)['\"`]"
+      ],
+      "replacement": "Payment Method Messaging Element (elements.create('paymentMethodMessaging'))",
+      "removalDate": "2025-09-30",
+      "removedInVersion": "2025-09-30.clover",
+      "sourceUrl": "https://docs.stripe.com/changelog/clover/2025-09-30/stripejs-deprecated-elements-removal",
+      "note": "References to these elements now cause failures."
+    },
+    {
+      "id": "stripe-legacy-usage-records",
+      "deprecated": "Legacy usage-based billing (subscriptionItems.createUsageRecord / listUsageRecordSummaries, and the aggregate_usage price setting)",
+      "patterns": [
+        "\\.createUsageRecord\\s*\\(",
+        "\\.listUsageRecordSummaries\\s*\\(",
+        "\\baggregate_usage\\b"
+      ],
+      "replacement": "Billing Meters: create a meter and send meter events (stripe.billing.meterEvents.create)",
+      "removalDate": "2025-03-31",
+      "removedInVersion": "2025-03-31.basil",
+      "sourceUrl": "https://docs.stripe.com/changelog/basil/2025-03-31/deprecate-legacy-usage-based-billing",
+      "note": "UsageRecord and UsageRecordSummary were removed, along with the aggregate_usage price parameter. Migration guide: https://docs.stripe.com/billing/subscriptions/usage-based-legacy/migration-guide"
+    },
+    {
+      "id": "stripe-upcoming-invoice-api",
+      "deprecated": "Upcoming Invoice API (invoices.retrieveUpcoming / listUpcomingLines, GET /v1/invoices/upcoming)",
+      "patterns": [
+        "\\.invoices\\.(retrieveUpcoming|listUpcomingLines)\\s*\\(",
+        "/v1/invoices/upcoming\\b"
+      ],
+      "replacement": "Create Preview Invoice API (stripe.invoices.createPreview)",
+      "removalDate": "2025-03-31",
+      "removedInVersion": "2025-03-31.basil",
+      "sourceUrl": "https://docs.stripe.com/changelog/basil/2025-03-31/invoice-preview-api-deprecations",
+      "note": "createPreview needs specific subscription details along with the customer; it can no longer preview across all of a customer's subscriptions."
+    }
+  ]
+}

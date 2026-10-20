@@ -1,0 +1,7 @@
+# Dependencies and build output never go into git.
+/node_modules/
+/dist/
+
+# OS / editor clutter
+.DS_Store
+*.log
