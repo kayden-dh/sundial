@@ -55,6 +55,20 @@ test("finds calls split across several lines", () => {
   ]);
 });
 
+test("a backtick inside a regex doesn't hide the rest of the file", () => {
+  assert.deepEqual(findingsIn("legacy/backtick-regex.js"), [
+    "12 stripe-sources-api",
+    "16 stripe-upcoming-invoice-api",
+  ]);
+});
+
+test("a lone backtick in JSX text doesn't hide the rest of the file", () => {
+  assert.deepEqual(findingsIn("legacy/backtick-jsx.jsx"), [
+    "8 stripejs-legacy-payment-intent-methods",
+    "12 stripejs-redirect-to-checkout",
+  ]);
+});
+
 test("shows the whole call for multi-line matches", () => {
   const f = result.findings.find((x) => x.file === path.normalize("legacy/multiline.js") && x.line === 6);
   assert.equal(f?.code, "return stripe.sources .create({ type: \"card\" });");
@@ -75,8 +89,8 @@ test("skips node_modules, dist and minified files", () => {
     assert.ok(!f.file.startsWith("dist"), `should skip ${f.file}`);
     assert.ok(!f.file.endsWith(".min.js"), `should skip ${f.file}`);
   }
-  // 6 real source files: 3 in legacy/, 2 in modern/, 1 in ignored/.
-  assert.equal(result.filesScanned, 6);
+  // 8 real source files: 5 in legacy/, 2 in modern/, 1 in ignored/.
+  assert.equal(result.filesScanned, 8);
 });
 
 // Direct tests of the comment/string stripper.
@@ -99,4 +113,27 @@ test("stripSource treats ${...} in template literals as code", () => {
   assert.ok(!code.includes("handleX"));
   assert.ok(code.includes("realCall({ a: 1 })"));
   assert.ok(code.includes("after();"));
+});
+
+test("stripSource recovers from a template that never closes", () => {
+  const { code } = stripSource("const re = /`/;\nstripe.sources.create();\n");
+  assert.ok(code.includes("stripe.sources.create()"));
+  assert.ok(code.includes("/`/")); // the stray backtick is kept as plain code
+});
+
+test("stripSource still blanks real templates after a stray backtick", () => {
+  // The stray backtick opens first; the real template inside ${...} closes.
+  const src = "x(`a ${ y(`inner handleX()`) }\nafter();\n";
+  const { code } = stripSource(src);
+  assert.ok(code.includes("after();"));
+  assert.ok(!code.includes("handleX"));
+});
+
+test("known gap: a later backtick can pair up with a stray one", () => {
+  // The regex backtick and the backtick in the string below pair up as one
+  // "template", so the call between them is hidden. The safety net only
+  // helps when a template is still open at the end of the file.
+  const src = 'const re = /`/;\nstripe.sources.create();\nconst s = "`";\n';
+  const { code } = stripSource(src);
+  assert.ok(!code.includes("stripe.sources.create()"));
 });

@@ -77,10 +77,15 @@ This lets you fail a CI build when deprecated calls appear.
 
 ### Known limitations (Stage 1)
 
-- This is pattern matching, not a real JavaScript parser. Regex literals that
-  contain quotes or `//` (like `/"/`) and apostrophes in JSX text
+- This is pattern matching, not a real JavaScript parser. Quotes or `//`
+  inside regex literals (like `/"/`) and apostrophes in JSX text
   (`<p>Don't</p>`) can confuse comment/string detection. The effect stops at
   the end of that line.
+- A stray backtick (`` /`/ `` in a regex, or a lone backtick in JSX text)
+  looks like the start of a template string. If that "template" is still
+  open at the end of the file, Sundial retries with the backtick treated as
+  plain code, so the rest of the file is still scanned. But if a later
+  backtick pairs up with the stray one, code between the two can be missed.
 - `stringPatterns` (URLs like `/v1/sources`) also match inside log messages.
 - It can't tell whether `stripe` really is a Stripe client. Any object with a
   matching method name is flagged.
