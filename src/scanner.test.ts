@@ -2,7 +2,7 @@
 // Uses Node's built-in test runner (node:test), so there's nothing extra to install.
 // Run with:  npm test
 
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import * as fs from "fs";
 import * as os from "os";
@@ -242,9 +242,21 @@ test("extractScripts keeps only JavaScript inside <script> blocks", () => {
 
 // ---- Provider layer ----
 
+// Temp folders made by the tests below. They're all deleted once every test
+// has finished (pass or fail), so test runs don't leave files behind.
+const tempDirs: string[] = [];
+function makeTempDir(prefix: string): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  tempDirs.push(dir);
+  return dir;
+}
+after(() => {
+  for (const dir of tempDirs) fs.rmSync(dir, { recursive: true, force: true });
+});
+
 /** Writes provider files into a fresh temp folder and returns its path. */
 function providerDir(files: Record<string, unknown>): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sundial-providers-"));
+  const dir = makeTempDir("sundial-providers-");
   for (const [name, content] of Object.entries(files)) {
     fs.writeFileSync(path.join(dir, name), JSON.stringify(content));
   }
@@ -287,7 +299,7 @@ test("every *.json file in the providers folder is loaded automatically", () => 
 
   // The new provider's entries work end to end, using its own mention words.
   const all = providers.flatMap((p) => p.deprecations);
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "sundial-code-"));
+  const tmp = makeTempDir("sundial-code-");
   fs.writeFileSync(path.join(tmp, "uses-acme.js"), "const acme = require('acme');\nacme.ping();\nconst x = { old_flag: 1 };\n");
   fs.writeFileSync(path.join(tmp, "no-mention.js"), "const x = { old_flag: 1 };\n");
   const found = scan(tmp, all).findings.map((f) => `${f.file}:${f.line} ${f.deprecation.provider.id}/${f.deprecation.id}`);

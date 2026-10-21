@@ -1,138 +1,125 @@
 # Sundial
 
-Sundial is an API deprecation scanner. It warns you when your code uses API
-features that are deprecated or already removed, and tells you what to use
-instead, with a link to the provider's official docs.
-
-**Supported providers:** Stripe (more can be added as data files, see
-[Adding a new provider](#adding-a-new-provider)).
-
-**Stage 1** is a small command-line tool: it scans a folder of
-JavaScript/TypeScript code using pattern matching against hand-checked lists
-of deprecations, one list per API provider.
-
-## Quick start (npx)
-
-Requires Node.js 18 or newer. No install needed: `npx` downloads and runs it.
+Sundial scans your JavaScript/TypeScript code for deprecated or removed API calls (currently Stripe) and tells you what to use instead.
 
 ```bash
-npx @kayden-dh/sundial scan ./some-project
+npx @kayden-dh/sundial scan .
 ```
 
-Or install it globally to get a shorter `sundial` command:
+```
+Sundial: scanned 1 file(s) in . for Stripe deprecations
+
+checkout.js
+  Line 2: await stripe.redirectToCheckout({ sessionId: session.id });
+    Provider:    Stripe
+    Deprecated:  Stripe.js redirectToCheckout()
+    Use instead: Redirect to the Checkout Session URL yourself (window.location.href = session.url), or use Payment Links / Buy Buttons for client-only integrations
+    Removed:     2025-09-30 (API version 2025-09-30.clover)
+    Docs:        https://docs.stripe.com/changelog/clover/2025-09-30/remove-redirect-to-checkout
+    Rule:        stripejs-redirect-to-checkout
+
+Found 1 deprecated API usage(s) in 1 file(s) (Stripe: 1).
+```
+
+Requires Node.js 18 or newer. Nothing is uploaded: Sundial only reads files
+on your machine.
+
+## Known limitations
+
+Sundial uses pattern matching, not a full JavaScript parser. In practice:
+
+- **It can miss calls** where the method name is in a variable
+  (`stripe[method](...)`), or where a library wraps Stripe for you.
+- **It doesn't detect Sources passed through a `source` option**, such as
+  `stripe.paymentIntents.confirm(id, { source: src.id })` or webhook code
+  checking `object === "source"`. A plain `source:` key is too common to flag
+  safely.
+- **It can't tell whether `stripe` really is a Stripe client.** Any object
+  with a matching method name is flagged.
+- **Unusual syntax can confuse comment/string detection**: quotes, `//` or
+  `/*` inside a regex literal, or apostrophes and backticks in JSX text.
+  Usually only the rest of that line is affected.
+- **Generic names** (`display_items`, `aggregate_usage`) are only reported in
+  files that mention "stripe". That can miss a helper file that never names
+  Stripe.
+- **Only JS/TS files and inline `<script>` blocks in `.html`/`.htm`/`.php`
+  pages are scanned.** Server code in other languages (Python, PHP, Ruby, ...)
+  and Vue/Svelte/Astro files aren't checked.
+- **A removal date means the feature was removed in that API version.**
+  Accounts pinned to an older version may still work until they upgrade.
+
+## What it detects
+
+| Deprecated | Removed in |
+|---|---|
+| [Sources API](https://docs.stripe.com/sources) (`stripe.sources.*`, `/v1/sources`) | deprecated, no date yet |
+| [Stripe.js `createSource()` / `retrieveSource()`](https://docs.stripe.com/changelog/dahlia/2026-03-25/remove-legacy-stripejs-methods) | 2026-03-25.dahlia |
+| [Stripe.js `handleCardPayment()` / `confirmPaymentIntent()`](https://docs.stripe.com/changelog/dahlia/2026-03-25/remove-legacy-stripejs-methods) | 2026-03-25.dahlia |
+| [Stripe.js `handleFpxPayment()`](https://docs.stripe.com/changelog/dahlia/2026-03-25/remove-legacy-stripejs-methods) | 2026-03-25.dahlia |
+| [Stripe.js `handleCardSetup()` / `confirmSetupIntent()`](https://docs.stripe.com/changelog/dahlia/2026-03-25/remove-legacy-stripejs-methods) | 2026-03-25.dahlia |
+| [Stripe.js `redirectToCheckout()`](https://docs.stripe.com/changelog/clover/2025-09-30/remove-redirect-to-checkout) | 2025-09-30.clover |
+| [Bank Elements: `idealBank`, `fpxBank`, `epsBank`, `p24Bank`](https://docs.stripe.com/changelog/clover/2025-09-30/stripejs-deprecated-elements-removal) | 2025-09-30.clover |
+| [Messaging Elements: `affirmMessage`, `afterpayClearpayMessage`](https://docs.stripe.com/changelog/clover/2025-09-30/stripejs-deprecated-elements-removal) | 2025-09-30.clover |
+| [Legacy usage records (`createUsageRecord`, `listUsageRecordSummaries`)](https://docs.stripe.com/changelog/basil/2025-03-31/deprecate-legacy-usage-based-billing) | 2025-03-31.basil |
+| [`aggregate_usage` on metered prices](https://docs.stripe.com/changelog/basil/2025-03-31/deprecate-legacy-usage-based-billing) | 2025-03-31.basil |
+| [Upcoming Invoice API (`retrieveUpcoming`, `listUpcomingLines`)](https://docs.stripe.com/changelog/basil/2025-03-31/invoice-preview-api-deprecations) | 2025-03-31.basil |
+| [Checkout Session `display_items`](https://docs.stripe.com/changelog/2020-08-27/removes-display-items-checkout-session) | 2020-08-27 |
+| [`react-stripe-elements` package](https://github.com/stripe-archive/react-stripe-elements) | deprecated, no date yet |
+
+Every entry links to Stripe's own docs, changelog or GitHub.
+
+## Usage
+
+```bash
+npx @kayden-dh/sundial scan <path>    # a folder or a single file
+```
+
+Or install it to get a shorter `sundial` command:
 
 ```bash
 npm install -g @kayden-dh/sundial
-sundial scan ./some-project
+sundial scan .
 ```
 
-> These work once the package is published to npm (see
-> [Publishing](#publishing-to-npm)). Until then, use the steps below.
+**Exit codes**: `0` = nothing found, `1` = deprecated usage found, `2` =
+error. So you can fail a CI build when deprecated calls appear:
 
-## Run from source
+```bash
+npx @kayden-dh/sundial scan ./src || exit 1
+```
+
+### What gets scanned
+
+- `.js .jsx .mjs .cjs .ts .tsx .mts .cts` files
+- Inline `<script>` blocks in `.html`, `.htm` and `.php` pages (page text,
+  PHP code, HTML comments and non-JS script types are ignored)
+- Skipped: minified files (`*.min.js`) and the folders `node_modules`,
+  `dist`, `build`, `out`, `coverage`, `vendor`, `.git`, `.next`, `.nuxt`,
+  `.svelte-kit`, `.turbo`, `.cache`, `.vercel`, `.output`
+
+### How matching works
+
+- Comments are ignored, so a mention like `// old: handleCardPayment()` isn't
+  flagged. Method names inside plain strings are ignored too.
+- Calls split across lines (`stripe.sources\n  .create(...)`) and bracket
+  calls (`stripe["handleCardPayment"](...)`) are caught.
+- Code inside a template literal's `${...}` still counts as code.
+
+---
+
+## Contributing
+
+### Run from source
 
 ```bash
 git clone https://github.com/kayden-dh/sundial.git
 cd sundial
-npm install                       # also compiles the TypeScript into dist/
-npm run scan -- ./some-project    # run it straight from the repo
+npm install                       # also compiles TypeScript into dist/
+npm run scan -- ./some-project
+npm test
 ```
 
-To get the `sundial` command on your machine from this checkout, run
-`npm link` once, then `sundial scan ./some-project`.
-
-Example output:
-
-```
-Sundial: scanned 16 file(s) in ./test-fixtures for Stripe deprecations
-
-legacy/checkout.ts
-  Line 10: return stripe.handleCardPayment(clientSecret, card);
-    Provider:    Stripe
-    Deprecated:  Stripe.js handleCardPayment() / confirmPaymentIntent()
-    Use instead: stripe.confirmCardPayment(clientSecret, { payment_method: { card: cardElement } })
-    Removed:     2026-03-25 (API version 2026-03-25.dahlia)
-    Docs:        https://docs.stripe.com/changelog/dahlia/2026-03-25/remove-legacy-stripejs-methods
-    Rule:        stripejs-legacy-payment-intent-methods
-
-Found 33 deprecated API usage(s) in 11 file(s) (Stripe: 33).
-```
-
-**Exit codes**: `0` = nothing found, `1` = deprecated usage found, `2` = error.
-This lets you fail a CI build when deprecated calls appear.
-
-### What gets scanned
-
-- Files ending in `.js .jsx .mjs .cjs .ts .tsx .mts .cts`
-- Inline `<script>` blocks in `.html`, `.htm` and `.php` pages. The rest of
-  the page (HTML, PHP code, HTML comments, and `<script>` blocks of non-JS
-  types like `application/json`) is ignored.
-- Skipped files: minified files (`*.min.js`, `*.min.mjs`, `*.min.cjs`)
-- Skipped folders: `node_modules`, `dist`, `build`, `out`, `coverage`,
-  `vendor`, `.git`, `.next`, `.nuxt`, `.svelte-kit`, `.turbo`, `.cache`,
-  `.vercel`, `.output` (see `SKIPPED_FOLDERS` in `src/scanner.ts`)
-
-### How matching works
-
-1. Comments are removed first (`//`, `/* */` and `/** */` doc blocks), so
-   mentioning `handleCardPayment()` in a comment is never flagged.
-2. Method-call `patterns` also ignore string contents, so
-   `"we replaced stripe.sources.create()"` in a message isn't flagged.
-   Code inside a template literal's `${...}` still counts as code.
-3. Each pattern runs over the whole file, not line by line. That means
-   chained calls split across lines are caught:
-
-   ```js
-   stripe.sources
-     .create({ type: "card" });   // reported at line 1
-   ```
-
-   For a chained call that starts its line with a dot, the report also shows
-   the line with the object it's called on:
-   `Line 2: stripe .redirectToCheckout({ sessionId });`
-4. Bracket calls with the method name written out are caught too:
-   `stripe["handleCardPayment"](...)`, `stripe?.["redirectToCheckout"]?.(...)`.
-   These patterns are generated from each entry's `methods` list, so you
-   don't write them by hand.
-5. Entries with `requireProviderMention` (generic names like `display_items`
-   and `aggregate_usage`) only report matches in files that contain one of
-   the provider's `mentionWords` (for Stripe: "stripe"), in any case. An
-   import, a comment or a variable name all count.
-
-### Known limitations (Stage 1)
-
-- This is pattern matching, not a real JavaScript parser. Quotes or `//`
-  inside regex literals (like `/"/`) and apostrophes in JSX text
-  (`<p>Don't</p>`) can confuse comment/string detection. The effect stops at
-  the end of that line.
-- A stray backtick (`` /`/ `` in a regex, or a lone backtick in JSX text)
-  looks like the start of a template string. If that "template" is still
-  open at the end of the file, Sundial retries with the backtick treated as
-  plain code, so the rest of the file is still scanned. But if a later
-  backtick pairs up with the stray one, code between the two can be missed.
-- `stringPatterns` (URLs like `/v1/sources`) also match inside log messages.
-- A method name held in a variable, like `stripe[method](...)`, can't be
-  seen by text matching.
-- Only `.html`, `.htm` and `.php` pages have their scripts extracted. Vue,
-  Svelte and Astro files aren't scanned yet.
-- It can't tell whether `stripe` really is a Stripe client. Any object with a
-  matching method name is flagged.
-- **Sources passed through a `source` option aren't detected.** Code can use
-  the deprecated Sources API without calling `stripe.sources.*`, for example
-  `stripe.paymentIntents.confirm(id, { source: src.id })`, or a webhook
-  handler that checks `event.data.object.object === "source"`. A plain
-  `source:` key is too common to flag safely: it's also used with
-  `customers.createSource({ source: token })` and card tokens.
-- `requireProviderMention` can miss a real Stripe file that never says
-  "stripe", for example a helper that receives a Checkout Session object as
-  a parameter. It can also be triggered by unrelated words that contain a
-  mention word, like "pinstripe".
-- A **removal date** means the provider removed the feature in that API
-  version (Stripe versions its API this way).
-  Accounts pinned to an older API version may still have it working, but
-  upgrading will break it.
-
-## Project layout
+### Project layout
 
 ```
 data/providers/stripe.json      Stripe's settings + deprecation list
@@ -145,24 +132,18 @@ src/html.ts                     pulls <script> blocks out of .html/.php pages
 src/report.ts                   formats the terminal output
 src/scanner.test.ts             tests (not included in the npm package)
 test-fixtures/                  fake code used by the tests:
-  legacy/                         should be flagged (incl. multi-line calls)
+  legacy/                         should be flagged
   modern/                         should NOT be flagged
-  ignored/                        deprecated names only in comments/strings,
-                                  or generic names in non-Stripe files
+  ignored/                        mentions in comments/strings, or generic
+                                  names in non-Stripe files
   node_modules/, dist/, *.min.js  should be skipped entirely
 ```
 
-## Run the tests
+### Adding a new deprecation
 
-```bash
-npm test
-```
-
-## Adding a new deprecation
-
-1. **Find an official source first.** Use the provider's docs or changelog
-   (for Stripe: `https://docs.stripe.com/changelog`). If you can't find
-   official wording saying it's deprecated or removed, don't add it.
+1. **Find an official source first** (for Stripe:
+   `https://docs.stripe.com/changelog`). If you can't find official wording
+   saying it's deprecated or removed, don't add it.
 2. Add an entry to the provider's `deprecations` list, for Stripe in
    `data/providers/stripe.json`:
 
@@ -182,17 +163,17 @@ npm test
 
    | Field | Required | Meaning |
    |---|---|---|
-   | `id` | yes | Unique kebab-case name |
+   | `id` | yes | Unique kebab-case name (unique across all providers) |
    | `deprecated` | yes | What is deprecated, in plain words |
-   | `patterns` | one of these two | Regexes checked against code with comments **and string contents** removed. Use for method calls. |
-   | `stringPatterns` | one of these two | Regexes checked against code with only comments removed. Use when the deprecated thing is inside a string: URLs (`/v1/sources`), element names (`elements.create("idealBank")`), quoted keys. |
-   | `methods` | no | Method names this entry covers: `"handleCardPayment"`, or `"invoices.retrieveUpcoming"` when it must be called on that object. Sundial generates bracket-call patterns (`stripe["handleCardPayment"](...)`) from these. Still write the normal dot-call regex in `patterns`. |
+   | `patterns` | one of `patterns`, `stringPatterns`, `methods` | Regexes checked against code with comments **and string contents** removed. Use for method calls. |
+   | `stringPatterns` | | Regexes checked against code with only comments removed. Use when the deprecated thing is inside a string: URLs (`/v1/sources`), element names (`elements.create("idealBank")`), quoted keys. |
+   | `methods` | | Method names (`"handleCardPayment"`, or `"invoices.retrieveUpcoming"` for a call on that object). Bracket-call patterns (`stripe["handleCardPayment"](...)`) are generated from these. Still write the normal dot-call regex in `patterns`. |
    | `ignoreCallsOn` | no | Objects whose same-named method is fine, e.g. `["customers"]` so `stripe.customers["createSource"](...)` isn't flagged. |
-   | `requireProviderMention` | no | `true` = only report in files that contain one of the provider's `mentionWords` (any case). Use for generic names other code might share. |
+   | `requireProviderMention` | no | `true` = only report in files that contain one of the provider's `mentionWords`. For generic names. |
    | `replacement` | yes | What to use instead |
    | `removalDate` | no | `YYYY-MM-DD`, or `null` if the provider hasn't published one. **Never guess.** |
    | `removedInVersion` | no | API version that removed it, or `null` |
-   | `sourceUrl` | yes | An `https` link on one of the provider's `officialSources` (for Stripe: `stripe.com`, `docs.stripe.com`, `github.com/stripe/...`, `github.com/stripe-archive/...`) |
+   | `sourceUrl` | yes | An `https` link on one of the provider's `officialSources` |
    | `note` | yes | Short extra context |
 
 3. **Writing patterns.** They're regular expressions inside JSON strings, so
@@ -204,21 +185,20 @@ npm test
      across lines still match. `\\s` includes newlines.
    - Make sure the pattern doesn't match the *modern* replacement.
 4. Add a deprecated example to `test-fixtures/legacy/` and the modern
-   replacement to `test-fixtures/modern/`, then update the expected results in
-   `src/scanner.test.ts` and run `npm test`.
+   replacement to `test-fixtures/modern/`, update the expected results in
+   `src/scanner.test.ts`, and run `npm test`.
 
 Sundial checks every provider file when it starts. A bad regex, missing
 field, duplicate id, or a source URL outside the provider's official sources
 stops it with an error that names the file and entry.
 
-## Adding a new provider
+### Adding a new provider
 
-Each API provider is one JSON file in `data/providers/`. Sundial loads every
-`*.json` file there automatically, so adding an API means adding a file. No
-code changes are needed.
+Each API provider is one JSON file in `data/providers/`. Every `*.json` file
+there is loaded automatically, so adding an API means adding a file. No code
+changes are needed.
 
-1. Create `data/providers/<id>.json`. The file name must match the provider
-   `id`:
+1. Create `data/providers/<id>.json` (the file name must match the `id`):
 
    ```json
    {
@@ -239,39 +219,21 @@ code changes are needed.
    | `mentionWords` | Words that count as a mention of this provider in a file (any case), used by `requireProviderMention` entries |
    | `officialSources` | Where `sourceUrl` links may point: a domain (`docs.acme.com`, exact host) or a domain plus path (`github.com/acme`, which allows `github.com/acme/...` but not `github.com/acme-other/...`). No `https://`. |
 
-2. Add deprecation entries as described in
-   [Adding a new deprecation](#adding-a-new-deprecation). Entry ids must be
-   unique across all providers, so prefix them with the provider id
-   (`acme-...`).
+2. Add deprecation entries as described above. Prefix their ids with the
+   provider id (`acme-...`) to keep them unique.
 3. Add fixtures under `test-fixtures/` and expected results in
    `src/scanner.test.ts`, then run `npm test`.
 
-## Publishing to npm
+### Publishing (maintainers)
 
-The package is set up for npm as `@kayden-dh/sundial` (the command is still
-`sundial`). The `files` list in `package.json` publishes only `dist/`
-(without test files), `data/`, `README.md` and `LICENSE`.
+The `files` list in `package.json` publishes only `dist/` (without test
+files), `data/`, `README.md` and `LICENSE`.
 
 ```bash
 npm pack --dry-run   # preview exactly which files would be published
-npm login
 npm publish          # runs the tests first (prepublishOnly)
 ```
-
-Scoped packages are private by default on npm, so
-`"publishConfig": { "access": "public" }` makes it public.
 
 ## License
 
 MIT, see [LICENSE](LICENSE).
-
-## Sources for the current Stripe list
-
-- Sources API: https://docs.stripe.com/sources
-- Legacy Stripe.js methods (2026-03-25.dahlia): https://docs.stripe.com/changelog/dahlia/2026-03-25/remove-legacy-stripejs-methods
-- redirectToCheckout (2025-09-30.clover): https://docs.stripe.com/changelog/clover/2025-09-30/remove-redirect-to-checkout
-- Legacy bank & messaging Elements (2025-09-30.clover): https://docs.stripe.com/changelog/clover/2025-09-30/stripejs-deprecated-elements-removal
-- Legacy usage records (2025-03-31.basil): https://docs.stripe.com/changelog/basil/2025-03-31/deprecate-legacy-usage-based-billing
-- Upcoming Invoice API (2025-03-31.basil): https://docs.stripe.com/changelog/basil/2025-03-31/invoice-preview-api-deprecations
-- Checkout Session display_items (2020-08-27): https://docs.stripe.com/changelog/2020-08-27/removes-display-items-checkout-session
-- react-stripe-elements package (moved, repo archived 2021-03-27): https://github.com/stripe-archive/react-stripe-elements
