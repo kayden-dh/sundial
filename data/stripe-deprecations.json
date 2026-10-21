@@ -1,11 +1,13 @@
 {
-  "$comment": "Known Stripe deprecations. Every entry must link to official Stripe docs or changelog. 'patterns' are JavaScript regular expressions (written as strings, so backslashes are doubled). 'removalDate' is null when Stripe hasn't published one. See README for how to add entries.",
+  "$comment": "Known Stripe deprecations. Every entry must link to official Stripe docs or changelog. 'patterns' are JavaScript regular expressions (as strings, so backslashes are doubled) checked against code with comments and string contents removed. 'stringPatterns' are checked against code with only comments removed, for things that live inside strings (URLs, element names). 'removalDate' is null when Stripe hasn't published one. See README for how to add entries.",
   "deprecations": [
     {
       "id": "stripe-sources-api",
       "deprecated": "Sources API (stripe.sources.* in the Node SDK, or the /v1/sources endpoint)",
       "patterns": [
-        "\\.sources\\.(create|retrieve|update|verify|listSourceTransactions)\\s*\\(",
+        "\\.sources\\s*\\.\\s*(create|retrieve|update|verify|listSourceTransactions)\\s*\\("
+      ],
+      "stringPatterns": [
         "/v1/sources\\b"
       ],
       "replacement": "PaymentMethods + PaymentIntents (stripe.paymentMethods.*, stripe.paymentIntents.*)",
@@ -18,8 +20,8 @@
       "id": "stripejs-source-methods",
       "deprecated": "Stripe.js createSource() / retrieveSource()",
       "patterns": [
-        "(?<!customers)\\.createSource\\s*\\(",
-        "(?<!customers)\\.retrieveSource\\s*\\("
+        "(?<!customers\\s*)\\.\\s*createSource\\s*\\(",
+        "(?<!customers\\s*)\\.\\s*retrieveSource\\s*\\("
       ],
       "replacement": "Payment Methods API (e.g. stripe.createPaymentMethod() / the Payment Element)",
       "removalDate": "2026-03-25",
@@ -80,8 +82,8 @@
     {
       "id": "stripejs-legacy-bank-elements",
       "deprecated": "Stripe.js bank Elements: idealBank, fpxBank, epsBank, p24Bank",
-      "patterns": [
-        "\\.create\\s*\\(\\s*['\"`](idealBank|fpxBank|epsBank|p24Bank)['\"`]"
+      "stringPatterns": [
+        "\\.\\s*create\\s*\\(\\s*['\"`](idealBank|fpxBank|epsBank|p24Bank)['\"`]"
       ],
       "replacement": "Payment Element (elements.create('payment'))",
       "removalDate": "2025-09-30",
@@ -92,8 +94,8 @@
     {
       "id": "stripejs-legacy-messaging-elements",
       "deprecated": "Stripe.js messaging Elements: affirmMessage, afterpayClearpayMessage",
-      "patterns": [
-        "\\.create\\s*\\(\\s*['\"`](affirmMessage|afterpayClearpayMessage)['\"`]"
+      "stringPatterns": [
+        "\\.\\s*create\\s*\\(\\s*['\"`](affirmMessage|afterpayClearpayMessage)['\"`]"
       ],
       "replacement": "Payment Method Messaging Element (elements.create('paymentMethodMessaging'))",
       "removalDate": "2025-09-30",
@@ -105,8 +107,10 @@
       "id": "stripe-legacy-usage-records",
       "deprecated": "Legacy usage-based billing (subscriptionItems.createUsageRecord / listUsageRecordSummaries, and the aggregate_usage price setting)",
       "patterns": [
-        "\\.createUsageRecord\\s*\\(",
-        "\\.listUsageRecordSummaries\\s*\\(",
+        "\\.\\s*createUsageRecord\\s*\\(",
+        "\\.\\s*listUsageRecordSummaries\\s*\\("
+      ],
+      "stringPatterns": [
         "\\baggregate_usage\\b"
       ],
       "replacement": "Billing Meters: create a meter and send meter events (stripe.billing.meterEvents.create)",
@@ -119,7 +123,9 @@
       "id": "stripe-upcoming-invoice-api",
       "deprecated": "Upcoming Invoice API (invoices.retrieveUpcoming / listUpcomingLines, GET /v1/invoices/upcoming)",
       "patterns": [
-        "\\.invoices\\.(retrieveUpcoming|listUpcomingLines)\\s*\\(",
+        "\\.invoices\\s*\\.\\s*(retrieveUpcoming|listUpcomingLines)\\s*\\("
+      ],
+      "stringPatterns": [
         "/v1/invoices/upcoming\\b"
       ],
       "replacement": "Create Preview Invoice API (stripe.invoices.createPreview)",

@@ -1,21 +1,43 @@
 {
-  "name": "sundial",
+  "name": "@kayden-dh/sundial",
   "version": "0.1.0",
   "description": "Warns you when your code uses deprecated or removed Stripe API features.",
-  "license": "UNLICENSED",
-  "private": true,
+  "keywords": [
+    "stripe",
+    "deprecation",
+    "deprecated",
+    "api",
+    "scanner",
+    "cli",
+    "migration"
+  ],
+  "license": "MIT",
+  "author": "kayden-dh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kayden-dh/sundial.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kayden-dh/sundial/issues"
+  },
+  "homepage": "https://github.com/kayden-dh/sundial#readme",
   "bin": {
     "sundial": "dist/cli.js"
   },
   "files": [
     "dist",
+    "!dist/**/*.test.*",
     "data"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
     "prepare": "npm run build",
     "scan": "node dist/cli.js scan",
-    "test": "npm run build && node --test dist/*.test.js"
+    "test": "npm run build && node --test dist/*.test.js",
+    "prepublishOnly": "npm test"
   },
   "engines": {
     "node": ">=18"

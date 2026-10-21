@@ -9,7 +9,13 @@ import * as path from "path";
 export interface DeprecationEntry {
   id: string;
   deprecated: string; // what is deprecated, in plain words
-  patterns: string[]; // regular expressions (as strings) to search for
+  // Regular expressions (as strings). `patterns` are checked against code with
+  // comments AND string contents removed: use them for method calls.
+  // `stringPatterns` are checked against code with only comments removed:
+  // use them when the deprecated thing lives inside a string (URLs, names).
+  // An entry needs at least one of the two.
+  patterns?: string[];
+  stringPatterns?: string[];
   replacement: string; // what to use instead
   removalDate: string | null; // YYYY-MM-DD, or null if Stripe hasn't said
   removedInVersion: string | null; // Stripe API version that removed it, if any
@@ -19,7 +25,8 @@ export interface DeprecationEntry {
 
 /** An entry plus its compiled regexes, ready for scanning. */
 export interface Deprecation extends DeprecationEntry {
-  regexes: RegExp[];
+  codeRegexes: RegExp[];
+  stringRegexes: RegExp[];
 }
 
 /**
@@ -73,19 +80,30 @@ export function loadDeprecations(filePath = DEFAULT_DATA_FILE): Deprecation[] {
       throw new Error(`${where}: "removalDate" must be YYYY-MM-DD or null`);
     }
 
-    if (!Array.isArray(entry.patterns) || entry.patterns.length === 0) {
-      throw new Error(`${where}: "patterns" must be a non-empty array`);
+    const patterns = entry.patterns ?? [];
+    const stringPatterns = entry.stringPatterns ?? [];
+    if (!Array.isArray(patterns) || !Array.isArray(stringPatterns)) {
+      throw new Error(`${where}: "patterns" and "stringPatterns" must be arrays`);
+    }
+    if (patterns.length + stringPatterns.length === 0) {
+      throw new Error(`${where}: needs at least one entry in "patterns" or "stringPatterns"`);
     }
 
     // Compile each pattern now, so a bad regex fails loudly at startup.
-    const regexes = entry.patterns.map((pattern) => {
+    // The "g" (global) flag lets us find every match in a whole file.
+    const compile = (pattern: string) => {
       try {
-        return new RegExp(pattern);
+        return new RegExp(pattern, "g");
       } catch (err) {
         throw new Error(`${where}: invalid pattern ${JSON.stringify(pattern)}: ${(err as Error).message}`);
       }
-    });
+    };
 
-    return { ...entry, removedInVersion: entry.removedInVersion ?? null, regexes };
+    return {
+      ...entry,
+      removedInVersion: entry.removedInVersion ?? null,
+      codeRegexes: patterns.map(compile),
+      stringRegexes: stringPatterns.map(compile),
+    };
   });
 }

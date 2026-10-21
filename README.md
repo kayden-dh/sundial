@@ -4,31 +4,38 @@ Sundial warns you when your code uses Stripe API features that are deprecated
 or already removed, and tells you what to use instead.
 
 **Stage 1** is a small command-line tool: it scans a folder of
-JavaScript/TypeScript code using simple text matching against a hand-checked
+JavaScript/TypeScript code using pattern matching against a hand-checked
 list of Stripe deprecations.
 
-## Install
+## Quick start (npx)
 
-Requires Node.js 18 or newer.
+Requires Node.js 18 or newer. No install needed: `npx` downloads and runs it.
 
 ```bash
-git clone <this repo> sundial
+npx @kayden-dh/sundial scan ./some-project
+```
+
+Or install it globally to get a shorter `sundial` command:
+
+```bash
+npm install -g @kayden-dh/sundial
+sundial scan ./some-project
+```
+
+> These work once the package is published to npm (see
+> [Publishing](#publishing-to-npm)). Until then, use the steps below.
+
+## Run from source
+
+```bash
+git clone https://github.com/kayden-dh/sundial.git
 cd sundial
-npm install      # also compiles the TypeScript into dist/
-npm link         # makes the `sundial` command available on your machine
+npm install                       # also compiles the TypeScript into dist/
+npm run scan -- ./some-project    # run it straight from the repo
 ```
 
-## Run
-
-```bash
-npx sundial scan ./some-project
-```
-
-Without `npm link`, you can run it straight from the repo:
-
-```bash
-npm run scan -- ./some-project
-```
+To get the `sundial` command on your machine from this checkout, run
+`npm link` once, then `sundial scan ./some-project`.
 
 Example output:
 
@@ -48,14 +55,35 @@ This lets you fail a CI build when deprecated calls appear.
 ### What gets scanned
 
 - Files ending in `.js .jsx .mjs .cjs .ts .tsx .mts .cts`
+- Skipped files: minified files (`*.min.js`, `*.min.mjs`, `*.min.cjs`)
 - Skipped folders: `node_modules`, `dist`, `build`, `out`, `coverage`,
   `vendor`, `.git`, `.next`, `.nuxt`, `.svelte-kit`, `.turbo`, `.cache`,
   `.vercel`, `.output` (see `SKIPPED_FOLDERS` in `src/scanner.ts`)
 
+### How matching works
+
+1. Comments are removed first (`//`, `/* */` and `/** */` doc blocks), so
+   mentioning `handleCardPayment()` in a comment is never flagged.
+2. Method-call `patterns` also ignore string contents, so
+   `"we replaced stripe.sources.create()"` in a message isn't flagged.
+   Code inside a template literal's `${...}` still counts as code.
+3. Each pattern runs over the whole file, not line by line. That means
+   chained calls split across lines are caught:
+
+   ```js
+   stripe.sources
+     .create({ type: "card" });   // reported at line 1
+   ```
+
 ### Known limitations (Stage 1)
 
-- It's line-by-line text matching. It can't tell code from comments or
-  strings, and it won't catch a call split across several lines.
+- This is pattern matching, not a real JavaScript parser. Regex literals that
+  contain quotes or `//` (like `/"/`) and apostrophes in JSX text
+  (`<p>Don't</p>`) can confuse comment/string detection. The effect stops at
+  the end of that line.
+- `stringPatterns` (URLs like `/v1/sources`) also match inside log messages.
+- It can't tell whether `stripe` really is a Stripe client. Any object with a
+  matching method name is flagged.
 - A **removal date** means Stripe removed the feature in that API version.
   Accounts pinned to an older API version may still have it working, but
   upgrading will break it.
@@ -67,11 +95,14 @@ data/stripe-deprecations.json   the deprecation list (edit this to add rules)
 src/cli.ts                      command-line entry point
 src/deprecations.ts             loads + validates the JSON list
 src/scanner.ts                  walks folders and matches patterns
+src/strip.ts                    removes comments / string contents
 src/report.ts                   formats the terminal output
-src/scanner.test.ts             tests against test-fixtures/
-test-fixtures/                  fake code: legacy/ (should be flagged),
-                                modern/ (should not), plus node_modules/
-                                and dist/ (should be skipped)
+src/scanner.test.ts             tests (not included in the npm package)
+test-fixtures/                  fake code used by the tests:
+  legacy/                         should be flagged (incl. multi-line calls)
+  modern/                         should NOT be flagged
+  ignored/                        deprecated names only in comments/strings
+  node_modules/, dist/, *.min.js  should be skipped entirely
 ```
 
 ## Run the tests
@@ -92,6 +123,7 @@ npm test
      "id": "stripejs-redirect-to-checkout",
      "deprecated": "Stripe.js redirectToCheckout()",
      "patterns": ["\\bredirectToCheckout\\s*\\("],
+     "stringPatterns": [],
      "replacement": "window.location.href = session.url",
      "removalDate": "2025-09-30",
      "removedInVersion": "2025-09-30.clover",
@@ -104,7 +136,8 @@ npm test
    |---|---|---|
    | `id` | yes | Unique kebab-case name |
    | `deprecated` | yes | What is deprecated, in plain words |
-   | `patterns` | yes | One or more JavaScript regular expressions |
+   | `patterns` | one of these two | Regexes checked against code with comments **and string contents** removed. Use for method calls. |
+   | `stringPatterns` | one of these two | Regexes checked against code with only comments removed. Use when the deprecated thing is inside a string: URLs (`/v1/sources`), element names (`elements.create("idealBank")`), quoted keys. |
    | `replacement` | yes | What to use instead |
    | `removalDate` | no | `YYYY-MM-DD`, or `null` if Stripe hasn't published one. **Never guess.** |
    | `removedInVersion` | no | Stripe API version that removed it, or `null` |
@@ -116,6 +149,8 @@ npm test
    - Use `\\b` (word boundary) so `handleCardPayment` doesn't also match
      `myhandleCardPayment`.
    - End method patterns with `\\s*\\(` so only calls match, not mentions.
+   - Put `\\s*` around dots (`\\.sources\\s*\\.\\s*create`) so calls split
+     across lines still match. `\\s` includes newlines.
    - Make sure the pattern doesn't match the *modern* replacement.
 4. Add a deprecated example to `test-fixtures/legacy/` and the modern
    replacement to `test-fixtures/modern/`, then update the expected results in
@@ -124,6 +159,25 @@ npm test
 Sundial checks the file when it starts. A bad regex, missing field,
 duplicate id or non-Stripe source URL stops it with an error that names
 the entry.
+
+## Publishing to npm
+
+The package is set up for npm as `@kayden-dh/sundial` (the command is still
+`sundial`). The `files` list in `package.json` publishes only `dist/`
+(without test files), `data/`, `README.md` and `LICENSE`.
+
+```bash
+npm pack --dry-run   # preview exactly which files would be published
+npm login
+npm publish          # runs the tests first (prepublishOnly)
+```
+
+Scoped packages are private by default on npm, so
+`"publishConfig": { "access": "public" }` makes it public.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
 
 ## Sources for the current list
 
