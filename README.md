@@ -83,6 +83,11 @@ This lets you fail a CI build when deprecated calls appear.
    `Line 2: stripe .redirectToCheckout({ sessionId });`
 4. Bracket calls with the method name written out are caught too:
    `stripe["handleCardPayment"](...)`, `stripe?.["redirectToCheckout"]?.(...)`.
+   These patterns are generated from each entry's `methods` list, so you
+   don't write them by hand.
+5. Entries with `requireStripeInFile` (generic names like `display_items` and
+   `aggregate_usage`) only report matches in files that mention "stripe"
+   somewhere, in any case. An import, a comment or a variable name all count.
 
 ### Known limitations (Stage 1)
 
@@ -102,6 +107,16 @@ This lets you fail a CI build when deprecated calls appear.
   Svelte and Astro files aren't scanned yet.
 - It can't tell whether `stripe` really is a Stripe client. Any object with a
   matching method name is flagged.
+- **Sources passed through a `source` option aren't detected.** Code can use
+  the deprecated Sources API without calling `stripe.sources.*`, for example
+  `stripe.paymentIntents.confirm(id, { source: src.id })`, or a webhook
+  handler that checks `event.data.object.object === "source"`. A plain
+  `source:` key is too common to flag safely: it's also used with
+  `customers.createSource({ source: token })` and card tokens.
+- `requireStripeInFile` can miss a real Stripe file that never says
+  "stripe", for example a helper that receives a Checkout Session object as
+  a parameter. It can also be triggered by unrelated words that contain
+  "stripe", like "pinstripe".
 - A **removal date** means Stripe removed the feature in that API version.
   Accounts pinned to an older API version may still have it working, but
   upgrading will break it.
@@ -120,7 +135,8 @@ src/scanner.test.ts             tests (not included in the npm package)
 test-fixtures/                  fake code used by the tests:
   legacy/                         should be flagged (incl. multi-line calls)
   modern/                         should NOT be flagged
-  ignored/                        deprecated names only in comments/strings
+  ignored/                        deprecated names only in comments/strings,
+                                  or generic names in non-Stripe files
   node_modules/, dist/, *.min.js  should be skipped entirely
 ```
 
@@ -142,7 +158,7 @@ npm test
      "id": "stripejs-redirect-to-checkout",
      "deprecated": "Stripe.js redirectToCheckout()",
      "patterns": ["\\bredirectToCheckout\\s*\\("],
-     "stringPatterns": [],
+     "methods": ["redirectToCheckout"],
      "replacement": "window.location.href = session.url",
      "removalDate": "2025-09-30",
      "removedInVersion": "2025-09-30.clover",
@@ -157,10 +173,13 @@ npm test
    | `deprecated` | yes | What is deprecated, in plain words |
    | `patterns` | one of these two | Regexes checked against code with comments **and string contents** removed. Use for method calls. |
    | `stringPatterns` | one of these two | Regexes checked against code with only comments removed. Use when the deprecated thing is inside a string: URLs (`/v1/sources`), element names (`elements.create("idealBank")`), quoted keys. |
+   | `methods` | no | Method names this entry covers: `"handleCardPayment"`, or `"invoices.retrieveUpcoming"` when it must be called on that object. Sundial generates bracket-call patterns (`stripe["handleCardPayment"](...)`) from these. Still write the normal dot-call regex in `patterns`. |
+   | `ignoreCallsOn` | no | Objects whose same-named method is fine, e.g. `["customers"]` so `stripe.customers["createSource"](...)` isn't flagged. |
+   | `requireStripeInFile` | no | `true` = only report in files that mention "stripe" (any case). Use for generic names other code might share. |
    | `replacement` | yes | What to use instead |
    | `removalDate` | no | `YYYY-MM-DD`, or `null` if Stripe hasn't published one. **Never guess.** |
    | `removedInVersion` | no | Stripe API version that removed it, or `null` |
-   | `sourceUrl` | yes | Must be on `stripe.com` / `docs.stripe.com` |
+   | `sourceUrl` | yes | Must be on `stripe.com`, `docs.stripe.com`, or Stripe's GitHub (`github.com/stripe/`, `github.com/stripe-archive/`) |
    | `note` | yes | Short extra context |
 
 3. **Writing patterns.** They're regular expressions inside JSON strings, so
@@ -207,3 +226,4 @@ MIT, see [LICENSE](LICENSE).
 - Legacy usage records (2025-03-31.basil): https://docs.stripe.com/changelog/basil/2025-03-31/deprecate-legacy-usage-based-billing
 - Upcoming Invoice API (2025-03-31.basil): https://docs.stripe.com/changelog/basil/2025-03-31/invoice-preview-api-deprecations
 - Checkout Session display_items (2020-08-27): https://docs.stripe.com/changelog/2020-08-27/removes-display-items-checkout-session
+- react-stripe-elements package (moved, repo archived 2021-03-27): https://github.com/stripe-archive/react-stripe-elements

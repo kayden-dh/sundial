@@ -1,5 +1,5 @@
 {
-  "$comment": "Known Stripe deprecations. Every entry must link to official Stripe docs or changelog. 'patterns' are JavaScript regular expressions (as strings, so backslashes are doubled) checked against code with comments and string contents removed. 'stringPatterns' are checked against code with only comments removed, for things that live inside strings (URLs, element names). 'removalDate' is null when Stripe hasn't published one. See README for how to add entries.",
+  "$comment": "Known Stripe deprecations. Every entry must link to official Stripe docs or changelog. 'patterns' are JavaScript regular expressions (as strings, so backslashes are doubled) checked against code with comments and string contents removed. 'stringPatterns' are checked against code with only comments removed, for things that live inside strings (URLs, element names). 'removalDate' is null when Stripe hasn't published one. 'methods' lists method names used to generate bracket-call patterns automatically. See README for how to add entries.",
   "deprecations": [
     {
       "id": "stripe-sources-api",
@@ -8,8 +8,14 @@
         "\\.sources\\s*\\.\\s*(create|retrieve|update|verify|listSourceTransactions)\\s*\\("
       ],
       "stringPatterns": [
-        "/v1/sources\\b",
-        "\\.sources\\s*\\[\\s*['\"`](create|retrieve|update|verify|listSourceTransactions)['\"`]\\s*\\]\\s*(\\?\\.)?\\s*\\("
+        "/v1/sources\\b"
+      ],
+      "methods": [
+        "sources.create",
+        "sources.retrieve",
+        "sources.update",
+        "sources.verify",
+        "sources.listSourceTransactions"
       ],
       "replacement": "PaymentMethods + PaymentIntents (stripe.paymentMethods.*, stripe.paymentIntents.*)",
       "removalDate": null,
@@ -24,8 +30,12 @@
         "(?<!customers\\s*)\\.\\s*createSource\\s*\\(",
         "(?<!customers\\s*)\\.\\s*retrieveSource\\s*\\("
       ],
-      "stringPatterns": [
-        "(?<!customers\\s*)\\[\\s*['\"`](createSource|retrieveSource)['\"`]\\s*\\]\\s*(\\?\\.)?\\s*\\("
+      "methods": [
+        "createSource",
+        "retrieveSource"
+      ],
+      "ignoreCallsOn": [
+        "customers"
       ],
       "replacement": "Payment Methods API (e.g. stripe.createPaymentMethod() / the Payment Element)",
       "removalDate": "2026-03-25",
@@ -40,8 +50,9 @@
         "\\bhandleCardPayment\\s*\\(",
         "\\bconfirmPaymentIntent\\s*\\("
       ],
-      "stringPatterns": [
-        "\\[\\s*['\"`](handleCardPayment|confirmPaymentIntent)['\"`]\\s*\\]\\s*(\\?\\.)?\\s*\\("
+      "methods": [
+        "handleCardPayment",
+        "confirmPaymentIntent"
       ],
       "replacement": "stripe.confirmCardPayment(clientSecret, { payment_method: { card: cardElement } })",
       "removalDate": "2026-03-25",
@@ -55,8 +66,8 @@
       "patterns": [
         "\\bhandleFpxPayment\\s*\\("
       ],
-      "stringPatterns": [
-        "\\[\\s*['\"`](handleFpxPayment)['\"`]\\s*\\]\\s*(\\?\\.)?\\s*\\("
+      "methods": [
+        "handleFpxPayment"
       ],
       "replacement": "stripe.confirmFpxPayment() (identical signature)",
       "removalDate": "2026-03-25",
@@ -71,8 +82,9 @@
         "\\bhandleCardSetup\\s*\\(",
         "\\bconfirmSetupIntent\\s*\\("
       ],
-      "stringPatterns": [
-        "\\[\\s*['\"`](handleCardSetup|confirmSetupIntent)['\"`]\\s*\\]\\s*(\\?\\.)?\\s*\\("
+      "methods": [
+        "handleCardSetup",
+        "confirmSetupIntent"
       ],
       "replacement": "stripe.confirmCardSetup(clientSecret, { payment_method: { card: cardElement } })",
       "removalDate": "2026-03-25",
@@ -86,8 +98,8 @@
       "patterns": [
         "\\bredirectToCheckout\\s*\\("
       ],
-      "stringPatterns": [
-        "\\[\\s*['\"`](redirectToCheckout)['\"`]\\s*\\]\\s*(\\?\\.)?\\s*\\("
+      "methods": [
+        "redirectToCheckout"
       ],
       "replacement": "Redirect to the Checkout Session URL yourself (window.location.href = session.url), or use Payment Links / Buy Buttons for client-only integrations",
       "removalDate": "2025-09-30",
@@ -121,20 +133,33 @@
     },
     {
       "id": "stripe-legacy-usage-records",
-      "deprecated": "Legacy usage-based billing (subscriptionItems.createUsageRecord / listUsageRecordSummaries, and the aggregate_usage price setting)",
+      "deprecated": "Legacy usage records (subscriptionItems.createUsageRecord / listUsageRecordSummaries)",
       "patterns": [
         "\\.\\s*createUsageRecord\\s*\\(",
         "\\.\\s*listUsageRecordSummaries\\s*\\("
       ],
-      "stringPatterns": [
-        "\\baggregate_usage\\b",
-        "\\[\\s*['\"`](createUsageRecord|listUsageRecordSummaries)['\"`]\\s*\\]\\s*(\\?\\.)?\\s*\\("
+      "methods": [
+        "createUsageRecord",
+        "listUsageRecordSummaries"
       ],
       "replacement": "Billing Meters: create a meter and send meter events (stripe.billing.meterEvents.create)",
       "removalDate": "2025-03-31",
       "removedInVersion": "2025-03-31.basil",
       "sourceUrl": "https://docs.stripe.com/changelog/basil/2025-03-31/deprecate-legacy-usage-based-billing",
-      "note": "UsageRecord and UsageRecordSummary were removed, along with the aggregate_usage price parameter. Migration guide: https://docs.stripe.com/billing/subscriptions/usage-based-legacy/migration-guide"
+      "note": "UsageRecord and UsageRecordSummary were removed. The aggregate_usage price setting is its own entry (stripe-aggregate-usage). Migration guide: https://docs.stripe.com/billing/subscriptions/usage-based-legacy/migration-guide"
+    },
+    {
+      "id": "stripe-aggregate-usage",
+      "deprecated": "aggregate_usage setting on metered prices and plans",
+      "stringPatterns": [
+        "\\baggregate_usage\\b"
+      ],
+      "requireStripeInFile": true,
+      "replacement": "Billing Meters: back the metered price with a meter (recurring.meter) and send meter events (stripe.billing.meterEvents.create)",
+      "removalDate": "2025-03-31",
+      "removedInVersion": "2025-03-31.basil",
+      "sourceUrl": "https://docs.stripe.com/changelog/basil/2025-03-31/deprecate-legacy-usage-based-billing",
+      "note": "aggregate_usage was removed from all API endpoints. In stringPatterns so quoted keys are caught. Only reported in files that mention Stripe, since aggregate_usage is a generic name."
     },
     {
       "id": "stripe-upcoming-invoice-api",
@@ -143,8 +168,11 @@
         "\\.invoices\\s*\\.\\s*(retrieveUpcoming|listUpcomingLines)\\s*\\("
       ],
       "stringPatterns": [
-        "/v1/invoices/upcoming\\b",
-        "\\.invoices\\s*\\[\\s*['\"`](retrieveUpcoming|listUpcomingLines)['\"`]\\s*\\]\\s*(\\?\\.)?\\s*\\("
+        "/v1/invoices/upcoming\\b"
+      ],
+      "methods": [
+        "invoices.retrieveUpcoming",
+        "invoices.listUpcomingLines"
       ],
       "replacement": "Create Preview Invoice API (stripe.invoices.createPreview)",
       "removalDate": "2025-03-31",
@@ -158,11 +186,24 @@
       "stringPatterns": [
         "\\bdisplay_items\\b"
       ],
+      "requireStripeInFile": true,
       "replacement": "line_items: expand it when creating/retrieving the session (expand: ['line_items']) or call stripe.checkout.sessions.listLineItems(sessionId)",
       "removalDate": "2020-08-27",
       "removedInVersion": "2020-08-27",
       "sourceUrl": "https://docs.stripe.com/changelog/2020-08-27/removes-display-items-checkout-session",
-      "note": "Checkout Sessions no longer include display_items. In stringPatterns so quoted keys like \"display_items\" are caught too."
+      "note": "Checkout Sessions no longer include display_items. In stringPatterns so quoted keys like \"display_items\" are caught too. Only reported in files that mention Stripe, since display_items is a common name."
+    },
+    {
+      "id": "react-stripe-elements-package",
+      "deprecated": "react-stripe-elements package (imports and requires)",
+      "stringPatterns": [
+        "\\b(?:from|import|require)\\s*\\(?\\s*['\"`]react-stripe-elements(?:/[^'\"`]*)?['\"`]"
+      ],
+      "replacement": "@stripe/react-stripe-js together with @stripe/stripe-js (Elements, CardElement, useStripe, useElements)",
+      "removalDate": null,
+      "removedInVersion": null,
+      "sourceUrl": "https://github.com/stripe-archive/react-stripe-elements",
+      "note": "Stripe's README says the project moved to @stripe/react-stripe-js and there are no plans for more major releases; the repository was archived on 2021-03-27. Migration guide: https://github.com/stripe/react-stripe-js/blob/master/docs/migrating.md"
     }
   ]
 }

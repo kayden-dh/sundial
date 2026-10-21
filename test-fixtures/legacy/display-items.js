@@ -1,4 +1,4 @@
-// FAKE CODE for testing Sundial. display_items was removed from Checkout
+// FAKE CODE for testing Sundial. display_items was removed from Stripe Checkout
 // Sessions in API version 2020-08-27.
 function onCheckoutCompleted(session) {
   const items = session.display_items;

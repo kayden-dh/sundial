@@ -113,7 +113,14 @@ function scanFile(filePath: string, baseDir: string, deprecations: Deprecation[]
   const lineStarts = findLineStarts(source);
   const findings: Finding[] = [];
 
+  // Some entries match generic names (like display_items) and only count in
+  // files that have something to do with Stripe. Checked on the raw text, so
+  // a mention in an import, comment or string counts.
+  const mentionsStripe = /stripe/i.test(source);
+
   for (const deprecation of deprecations) {
+    if (deprecation.requireStripeInFile && !mentionsStripe) continue;
+
     // Several patterns of one entry may hit the same line; report it once.
     const linesSeen = new Set<number>();
 

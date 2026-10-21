@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as path from "path";
-import { loadDeprecations } from "./deprecations";
+import { loadDeprecations, bracketCallPattern } from "./deprecations";
 import { scan } from "./scanner";
 import { stripSource } from "./strip";
 import { extractScripts } from "./html";
@@ -24,7 +24,7 @@ function findingsIn(file: string): string[] {
 test("data file loads and every entry has an official source URL", () => {
   assert.ok(deprecations.length >= 5);
   for (const d of deprecations) {
-    assert.match(d.sourceUrl, /^https:\/\/(docs\.)?stripe\.com\//);
+    assert.match(d.sourceUrl, /^https:\/\/((docs\.)?stripe\.com\/|github\.com\/(stripe|stripe-archive)\/)/);
   }
 });
 
@@ -33,7 +33,7 @@ test("finds every deprecated call in legacy/server.js", () => {
     "6 stripe-sources-api",
     "12 stripe-upcoming-invoice-api",
     "17 stripe-legacy-usage-records",
-    "24 stripe-legacy-usage-records",
+    "24 stripe-aggregate-usage",
   ]);
 });
 
@@ -119,6 +119,44 @@ test("finds the removed display_items property", () => {
   ]);
 });
 
+test("requireStripeInFile: generic names aren't flagged in files that never mention Stripe", () => {
+  // Uses display_items and aggregate_usage, but has nothing to do with Stripe.
+  assert.deepEqual(findingsIn("ignored/no-stripe-mention.js"), []);
+  // The same names ARE flagged in Stripe files (see display-items.js / server.js).
+  const flags = Object.fromEntries(deprecations.map((d) => [d.id, d.requireStripeInFile]));
+  assert.equal(flags["stripe-checkout-display-items"], true);
+  assert.equal(flags["stripe-aggregate-usage"], true);
+  assert.equal(flags["stripe-legacy-usage-records"], false); // only aggregate_usage was split out
+});
+
+test("flags imports and requires of react-stripe-elements", () => {
+  assert.deepEqual(findingsIn("legacy/react-stripe-elements.jsx"), [
+    "3 react-stripe-elements-package", // import ... from
+    "4 react-stripe-elements-package", // export ... from
+    "5 react-stripe-elements-package", // require()
+    "6 react-stripe-elements-package", // dynamic import()
+    // lines 8-9 only mention the name in a comment and a log message
+  ]);
+  assert.deepEqual(findingsIn("modern/react-stripe-js.jsx"), []);
+});
+
+test("bracket-call patterns are generated, not hand-written", () => {
+  const raw = JSON.parse(require("fs").readFileSync(path.join(__dirname, "..", "data", "stripe-deprecations.json"), "utf8"));
+  for (const entry of raw.deprecations) {
+    for (const p of entry.stringPatterns ?? []) {
+      assert.ok(!p.includes("\\[\\s*['"), `${entry.id} still has a hand-written bracket pattern`);
+    }
+  }
+  const re = (method: string, ignore: string[] = []) => new RegExp(bracketCallPattern(method, ignore));
+  assert.ok(re("handleCardPayment").test('stripe["handleCardPayment"](s)'));
+  assert.ok(re("handleCardPayment").test("stripe?.[`handleCardPayment`]?.(s)"));
+  assert.ok(!re("handleCardPayment").test('stripe["confirmCardPayment"](s)'));
+  assert.ok(re("invoices.retrieveUpcoming").test('stripe.invoices["retrieveUpcoming"]({})'));
+  assert.ok(!re("invoices.retrieveUpcoming").test('stripe.quotes["retrieveUpcoming"]({})'));
+  assert.ok(!re("createSource", ["customers"]).test('stripe.customers["createSource"](c)'));
+  assert.ok(!re("createSource", ["customers"]).test('stripe.customers?.["createSource"](c)'));
+});
+
 test("ignores deprecated methods mentioned in comments and strings", () => {
   assert.deepEqual(findingsIn("ignored/comments-and-strings.ts"), []);
 });
@@ -134,8 +172,8 @@ test("skips node_modules, dist and minified files", () => {
     assert.ok(!f.file.startsWith("dist"), `should skip ${f.file}`);
     assert.ok(!f.file.endsWith(".min.js"), `should skip ${f.file}`);
   }
-  // 13 real source files: 10 in legacy/ (incl. .html/.php), 2 in modern/, 1 in ignored/.
-  assert.equal(result.filesScanned, 13);
+  // 16 real source files: 11 in legacy/ (incl. .html/.php), 3 in modern/, 2 in ignored/.
+  assert.equal(result.filesScanned, 16);
 });
 
 // Direct tests of the comment/string stripper.
