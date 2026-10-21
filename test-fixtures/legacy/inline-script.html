@@ -1,0 +1,18 @@
+<!doctype html>
+<html>
+  <!-- FAKE PAGE for testing Sundial. Only real <script> code should be flagged. -->
+  <body>
+    <p>Old docs said to call elements.create('idealBank') and stripe.handleCardPayment(secret).</p>
+    <!-- <script>stripe.redirectToCheckout({ sessionId });</script> -->
+    <script type="application/json">{ "note": "elements.create('idealBank')" }</script>
+    <script src="https://js.stripe.com/v3/"></script>
+    <script>
+      const stripe = Stripe("pk_test_example");
+      const elements = stripe.elements();
+      const ideal = elements.create('idealBank');
+    </script>
+    <script type="module">
+      stripe.redirectToCheckout({ sessionId: "cs_test_123" });
+    </script>
+  </body>
+</html>

@@ -8,6 +8,7 @@ import * as path from "path";
 import { loadDeprecations } from "./deprecations";
 import { scan } from "./scanner";
 import { stripSource } from "./strip";
+import { extractScripts } from "./html";
 
 const FIXTURES = path.join(__dirname, "..", "test-fixtures");
 const deprecations = loadDeprecations();
@@ -74,6 +75,50 @@ test("shows the whole call for multi-line matches", () => {
   assert.equal(f?.code, "return stripe.sources .create({ type: \"card\" });");
 });
 
+test("chained calls show the object they're called on", () => {
+  const codeAt = (line: number) =>
+    result.findings.find((x) => x.file === path.normalize("legacy/chained-display.js") && x.line === line)?.code;
+  assert.deepEqual(findingsIn("legacy/chained-display.js"), [
+    "5 stripejs-redirect-to-checkout",
+    "11 stripejs-legacy-payment-intent-methods",
+  ]);
+  assert.equal(codeAt(5), "stripe .redirectToCheckout({ sessionId });");
+  // The comment line between "stripe" and "?.handleCardPayment" is skipped.
+  assert.equal(codeAt(11), "const result = stripe ?.handleCardPayment(secret);");
+});
+
+test("scans inline <script> blocks in HTML pages", () => {
+  // Line 5 (page text), 6 (commented-out script) and 7 (JSON script) are ignored.
+  assert.deepEqual(findingsIn("legacy/inline-script.html"), [
+    "12 stripejs-legacy-bank-elements",
+    "15 stripejs-redirect-to-checkout",
+  ]);
+});
+
+test("scans inline <script> blocks in PHP pages, ignoring PHP code", () => {
+  // Line 3 is PHP, and line 2's comment mentions "<script>" without being a tag.
+  assert.deepEqual(findingsIn("legacy/inline-script.php"), ["13 stripejs-legacy-bank-elements"]);
+});
+
+test("finds methods called with bracket syntax", () => {
+  assert.deepEqual(findingsIn("legacy/bracket-calls.js"), [
+    "3 stripejs-legacy-payment-intent-methods",
+    "4 stripejs-legacy-setup-intent-methods",
+    "5 stripejs-redirect-to-checkout",
+    "9 stripe-upcoming-invoice-api",
+    "10 stripe-legacy-usage-records",
+    // line 12: customers["createSource"] is a different method, not flagged
+    // line 18: stripe[method](...) is a KNOWN GAP (name in a variable)
+  ]);
+});
+
+test("finds the removed display_items property", () => {
+  assert.deepEqual(findingsIn("legacy/display-items.js"), [
+    "4 stripe-checkout-display-items",
+    "8 stripe-checkout-display-items",
+  ]);
+});
+
 test("ignores deprecated methods mentioned in comments and strings", () => {
   assert.deepEqual(findingsIn("ignored/comments-and-strings.ts"), []);
 });
@@ -89,8 +134,8 @@ test("skips node_modules, dist and minified files", () => {
     assert.ok(!f.file.startsWith("dist"), `should skip ${f.file}`);
     assert.ok(!f.file.endsWith(".min.js"), `should skip ${f.file}`);
   }
-  // 8 real source files: 5 in legacy/, 2 in modern/, 1 in ignored/.
-  assert.equal(result.filesScanned, 8);
+  // 13 real source files: 10 in legacy/ (incl. .html/.php), 2 in modern/, 1 in ignored/.
+  assert.equal(result.filesScanned, 13);
 });
 
 // Direct tests of the comment/string stripper.
@@ -136,4 +181,21 @@ test("known gap: a later backtick can pair up with a stray one", () => {
   const src = 'const re = /`/;\nstripe.sources.create();\nconst s = "`";\n';
   const { code } = stripSource(src);
   assert.ok(!code.includes("stripe.sources.create()"));
+});
+
+// Direct tests of the HTML/PHP script extractor.
+test("extractScripts keeps only JavaScript inside <script> blocks", () => {
+  const page = [
+    "<p>handleA()</p>",
+    "<script>handleB();</script>",
+    "<SCRIPT type='text/javascript'>handleC();</SCRIPT>",
+    '<script type="application/json">{"x": "handleD()"}</script>',
+    "<!-- <script>handleE();</script> -->",
+    "<?php /* <script> */ handleF(); ?><script>handleG();</script>",
+  ].join("\n");
+  const js = extractScripts(page);
+  assert.equal(js.length, page.length); // every position kept
+  assert.equal(js.split("\n").length, 6); // every line kept
+  for (const kept of ["handleB", "handleC", "handleG"]) assert.ok(js.includes(kept), kept);
+  for (const dropped of ["handleA", "handleD", "handleE", "handleF"]) assert.ok(!js.includes(dropped), dropped);
 });

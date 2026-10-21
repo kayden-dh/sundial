@@ -1,4 +1,5 @@
-// Walks a folder, reads every JavaScript/TypeScript file, and checks it
+// Walks a folder, reads every JavaScript/TypeScript file (plus inline
+// <script> blocks in .html/.htm/.php pages), and checks it
 // against the deprecation patterns. Comments are removed first (see strip.ts),
 // and each pattern runs over the whole file, so a call split across several
 // lines (stripe.sources\n  .create(...)) is still found.
@@ -7,6 +8,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { Deprecation } from "./deprecations";
 import { stripSource } from "./strip";
+import { extractScripts, PAGE_EXTENSIONS } from "./html";
 
 /** File extensions we treat as JS/TS source code. */
 const SOURCE_EXTENSIONS = new Set([".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"]);
@@ -36,7 +38,8 @@ const SKIPPED_FOLDERS = new Set([
 const MINIFIED_FILE = /\.min\.[cm]?js$/;
 
 function isSourceFile(name: string): boolean {
-  return SOURCE_EXTENSIONS.has(path.extname(name)) && !MINIFIED_FILE.test(name);
+  const ext = path.extname(name);
+  return (SOURCE_EXTENSIONS.has(ext) || PAGE_EXTENSIONS.has(ext)) && !MINIFIED_FILE.test(name);
 }
 
 /** One place where a deprecated pattern was found. */
@@ -100,8 +103,13 @@ export function listSourceFiles(dir: string): string[] {
 /** Checks one file and returns its findings, sorted by line. */
 function scanFile(filePath: string, baseDir: string, deprecations: Deprecation[]): Finding[] {
   const source = fs.readFileSync(filePath, "utf8");
-  const stripped = stripSource(source);
+
+  // For HTML/PHP pages, only the inline <script> blocks are JavaScript.
+  // extractScripts keeps every character in place, so positions still line up.
+  const isPage = PAGE_EXTENSIONS.has(path.extname(filePath));
+  const stripped = stripSource(isPage ? extractScripts(source) : source);
   const lines = source.split(/\r?\n/);
+  const codeLines = stripped.code.split(/\r?\n/); // same line count as `lines`
   const lineStarts = findLineStarts(source);
   const findings: Finding[] = [];
 
@@ -120,10 +128,22 @@ function scanFile(filePath: string, baseDir: string, deprecations: Deprecation[]
 
           // For a multi-line match, show every line it covers, joined up.
           const lastLine = lineNumberAt(lineStarts, start + Math.max(match[0].length - 1, 0));
-          const code = lines
-            .slice(firstLine - 1, lastLine)
-            .map((l) => l.trim())
-            .join(" ");
+
+          // A chained call like "stripe\n  .redirectToCheckout(" starts its
+          // line with a dot, so the object it's called on is on the line
+          // above. Show that line too, so the report reads "stripe .redirectToCheckout(".
+          let displayStart = firstLine;
+          const before = stripped.code.slice(lineStarts[firstLine - 1], start);
+          if (isChainContinuation(before, match[0])) {
+            let prev = firstLine - 1;
+            while (prev >= 1 && codeLines[prev - 1].trim() === "") prev--; // skip blank/comment-only lines
+            if (prev >= 1) displayStart = prev;
+          }
+
+          // The object's line (if any), then the lines the match itself covers.
+          const shown = lines.slice(firstLine - 1, lastLine);
+          if (displayStart !== firstLine) shown.unshift(lines[displayStart - 1]);
+          const code = shown.map((l) => l.trim()).join(" ");
 
           findings.push({ file: path.relative(baseDir, filePath), line: firstLine, code, deprecation });
         }
@@ -136,6 +156,17 @@ function scanFile(filePath: string, baseDir: string, deprecations: Deprecation[]
 
   // Sort by line. Array.sort is stable, so entries on the same line keep data-file order.
   return findings.sort((a, b) => a.line - b.line);
+}
+
+/**
+ * True when a match continues a chain from the previous line: the line holds
+ * nothing before the match except an optional "." or "?.", and the match
+ * starts with ".", "?." or "[".
+ */
+function isChainContinuation(before: string, matchText: string): boolean {
+  const lead = before.trim();
+  if (lead !== "" && lead !== "." && lead !== "?.") return false;
+  return /^(\?\.|\.|\[)/.test(lead + matchText.trimStart());
 }
 
 /** Character position where each line starts (line 1 starts at 0). */

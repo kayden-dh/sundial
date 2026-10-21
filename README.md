@@ -55,6 +55,9 @@ This lets you fail a CI build when deprecated calls appear.
 ### What gets scanned
 
 - Files ending in `.js .jsx .mjs .cjs .ts .tsx .mts .cts`
+- Inline `<script>` blocks in `.html`, `.htm` and `.php` pages. The rest of
+  the page (HTML, PHP code, HTML comments, and `<script>` blocks of non-JS
+  types like `application/json`) is ignored.
 - Skipped files: minified files (`*.min.js`, `*.min.mjs`, `*.min.cjs`)
 - Skipped folders: `node_modules`, `dist`, `build`, `out`, `coverage`,
   `vendor`, `.git`, `.next`, `.nuxt`, `.svelte-kit`, `.turbo`, `.cache`,
@@ -75,6 +78,12 @@ This lets you fail a CI build when deprecated calls appear.
      .create({ type: "card" });   // reported at line 1
    ```
 
+   For a chained call that starts its line with a dot, the report also shows
+   the line with the object it's called on:
+   `Line 2: stripe .redirectToCheckout({ sessionId });`
+4. Bracket calls with the method name written out are caught too:
+   `stripe["handleCardPayment"](...)`, `stripe?.["redirectToCheckout"]?.(...)`.
+
 ### Known limitations (Stage 1)
 
 - This is pattern matching, not a real JavaScript parser. Quotes or `//`
@@ -87,6 +96,10 @@ This lets you fail a CI build when deprecated calls appear.
   plain code, so the rest of the file is still scanned. But if a later
   backtick pairs up with the stray one, code between the two can be missed.
 - `stringPatterns` (URLs like `/v1/sources`) also match inside log messages.
+- A method name held in a variable, like `stripe[method](...)`, can't be
+  seen by text matching.
+- Only `.html`, `.htm` and `.php` pages have their scripts extracted. Vue,
+  Svelte and Astro files aren't scanned yet.
 - It can't tell whether `stripe` really is a Stripe client. Any object with a
   matching method name is flagged.
 - A **removal date** means Stripe removed the feature in that API version.
@@ -101,6 +114,7 @@ src/cli.ts                      command-line entry point
 src/deprecations.ts             loads + validates the JSON list
 src/scanner.ts                  walks folders and matches patterns
 src/strip.ts                    removes comments / string contents
+src/html.ts                     pulls <script> blocks out of .html/.php pages
 src/report.ts                   formats the terminal output
 src/scanner.test.ts             tests (not included in the npm package)
 test-fixtures/                  fake code used by the tests:
@@ -192,3 +206,4 @@ MIT, see [LICENSE](LICENSE).
 - Legacy bank & messaging Elements (2025-09-30.clover): https://docs.stripe.com/changelog/clover/2025-09-30/stripejs-deprecated-elements-removal
 - Legacy usage records (2025-03-31.basil): https://docs.stripe.com/changelog/basil/2025-03-31/deprecate-legacy-usage-based-billing
 - Upcoming Invoice API (2025-03-31.basil): https://docs.stripe.com/changelog/basil/2025-03-31/invoice-preview-api-deprecations
+- Checkout Session display_items (2020-08-27): https://docs.stripe.com/changelog/2020-08-27/removes-display-items-checkout-session

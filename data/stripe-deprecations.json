@@ -8,7 +8,8 @@
         "\\.sources\\s*\\.\\s*(create|retrieve|update|verify|listSourceTransactions)\\s*\\("
       ],
       "stringPatterns": [
-        "/v1/sources\\b"
+        "/v1/sources\\b",
+        "\\.sources\\s*\\[\\s*['\"`](create|retrieve|update|verify|listSourceTransactions)['\"`]\\s*\\]\\s*(\\?\\.)?\\s*\\("
       ],
       "replacement": "PaymentMethods + PaymentIntents (stripe.paymentMethods.*, stripe.paymentIntents.*)",
       "removalDate": null,
@@ -23,6 +24,9 @@
         "(?<!customers\\s*)\\.\\s*createSource\\s*\\(",
         "(?<!customers\\s*)\\.\\s*retrieveSource\\s*\\("
       ],
+      "stringPatterns": [
+        "(?<!customers\\s*)\\[\\s*['\"`](createSource|retrieveSource)['\"`]\\s*\\]\\s*(\\?\\.)?\\s*\\("
+      ],
       "replacement": "Payment Methods API (e.g. stripe.createPaymentMethod() / the Payment Element)",
       "removalDate": "2026-03-25",
       "removedInVersion": "2026-03-25.dahlia",
@@ -36,6 +40,9 @@
         "\\bhandleCardPayment\\s*\\(",
         "\\bconfirmPaymentIntent\\s*\\("
       ],
+      "stringPatterns": [
+        "\\[\\s*['\"`](handleCardPayment|confirmPaymentIntent)['\"`]\\s*\\]\\s*(\\?\\.)?\\s*\\("
+      ],
       "replacement": "stripe.confirmCardPayment(clientSecret, { payment_method: { card: cardElement } })",
       "removalDate": "2026-03-25",
       "removedInVersion": "2026-03-25.dahlia",
@@ -47,6 +54,9 @@
       "deprecated": "Stripe.js handleFpxPayment()",
       "patterns": [
         "\\bhandleFpxPayment\\s*\\("
+      ],
+      "stringPatterns": [
+        "\\[\\s*['\"`](handleFpxPayment)['\"`]\\s*\\]\\s*(\\?\\.)?\\s*\\("
       ],
       "replacement": "stripe.confirmFpxPayment() (identical signature)",
       "removalDate": "2026-03-25",
@@ -61,6 +71,9 @@
         "\\bhandleCardSetup\\s*\\(",
         "\\bconfirmSetupIntent\\s*\\("
       ],
+      "stringPatterns": [
+        "\\[\\s*['\"`](handleCardSetup|confirmSetupIntent)['\"`]\\s*\\]\\s*(\\?\\.)?\\s*\\("
+      ],
       "replacement": "stripe.confirmCardSetup(clientSecret, { payment_method: { card: cardElement } })",
       "removalDate": "2026-03-25",
       "removedInVersion": "2026-03-25.dahlia",
@@ -72,6 +85,9 @@
       "deprecated": "Stripe.js redirectToCheckout()",
       "patterns": [
         "\\bredirectToCheckout\\s*\\("
+      ],
+      "stringPatterns": [
+        "\\[\\s*['\"`](redirectToCheckout)['\"`]\\s*\\]\\s*(\\?\\.)?\\s*\\("
       ],
       "replacement": "Redirect to the Checkout Session URL yourself (window.location.href = session.url), or use Payment Links / Buy Buttons for client-only integrations",
       "removalDate": "2025-09-30",
@@ -111,7 +127,8 @@
         "\\.\\s*listUsageRecordSummaries\\s*\\("
       ],
       "stringPatterns": [
-        "\\baggregate_usage\\b"
+        "\\baggregate_usage\\b",
+        "\\[\\s*['\"`](createUsageRecord|listUsageRecordSummaries)['\"`]\\s*\\]\\s*(\\?\\.)?\\s*\\("
       ],
       "replacement": "Billing Meters: create a meter and send meter events (stripe.billing.meterEvents.create)",
       "removalDate": "2025-03-31",
@@ -126,13 +143,26 @@
         "\\.invoices\\s*\\.\\s*(retrieveUpcoming|listUpcomingLines)\\s*\\("
       ],
       "stringPatterns": [
-        "/v1/invoices/upcoming\\b"
+        "/v1/invoices/upcoming\\b",
+        "\\.invoices\\s*\\[\\s*['\"`](retrieveUpcoming|listUpcomingLines)['\"`]\\s*\\]\\s*(\\?\\.)?\\s*\\("
       ],
       "replacement": "Create Preview Invoice API (stripe.invoices.createPreview)",
       "removalDate": "2025-03-31",
       "removedInVersion": "2025-03-31.basil",
       "sourceUrl": "https://docs.stripe.com/changelog/basil/2025-03-31/invoice-preview-api-deprecations",
       "note": "createPreview needs specific subscription details along with the customer; it can no longer preview across all of a customer's subscriptions."
+    },
+    {
+      "id": "stripe-checkout-display-items",
+      "deprecated": "Checkout Session display_items property",
+      "stringPatterns": [
+        "\\bdisplay_items\\b"
+      ],
+      "replacement": "line_items: expand it when creating/retrieving the session (expand: ['line_items']) or call stripe.checkout.sessions.listLineItems(sessionId)",
+      "removalDate": "2020-08-27",
+      "removedInVersion": "2020-08-27",
+      "sourceUrl": "https://docs.stripe.com/changelog/2020-08-27/removes-display-items-checkout-session",
+      "note": "Checkout Sessions no longer include display_items. In stringPatterns so quoted keys like \"display_items\" are caught too."
     }
   ]
 }
