@@ -43,7 +43,7 @@
     "prepublishOnly": "npm test"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

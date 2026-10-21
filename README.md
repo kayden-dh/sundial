@@ -21,7 +21,7 @@ checkout.js
 Found 1 deprecated API usage(s) in 1 file(s) (Stripe: 1).
 ```
 
-Requires Node.js 18 or newer. Nothing is uploaded: Sundial only reads files
+Requires Node.js 22 or newer. Nothing is uploaded: Sundial only reads files
 on your machine.
 
 ## Known limitations
