@@ -4,8 +4,10 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
-import { loadDeprecations, bracketCallPattern } from "./deprecations";
+import { loadDeprecations, loadProviders, bracketCallPattern, isOfficialSource } from "./deprecations";
 import { scan } from "./scanner";
 import { stripSource } from "./strip";
 import { extractScripts } from "./html";
@@ -24,7 +26,7 @@ function findingsIn(file: string): string[] {
 test("data file loads and every entry has an official source URL", () => {
   assert.ok(deprecations.length >= 5);
   for (const d of deprecations) {
-    assert.match(d.sourceUrl, /^https:\/\/((docs\.)?stripe\.com\/|github\.com\/(stripe|stripe-archive)\/)/);
+    assert.ok(isOfficialSource(d.sourceUrl, d.provider.officialSources), d.sourceUrl);
   }
 });
 
@@ -119,11 +121,11 @@ test("finds the removed display_items property", () => {
   ]);
 });
 
-test("requireStripeInFile: generic names aren't flagged in files that never mention Stripe", () => {
+test("requireProviderMention: generic names aren't flagged in files that never mention Stripe", () => {
   // Uses display_items and aggregate_usage, but has nothing to do with Stripe.
   assert.deepEqual(findingsIn("ignored/no-stripe-mention.js"), []);
   // The same names ARE flagged in Stripe files (see display-items.js / server.js).
-  const flags = Object.fromEntries(deprecations.map((d) => [d.id, d.requireStripeInFile]));
+  const flags = Object.fromEntries(deprecations.map((d) => [d.id, d.requireProviderMention]));
   assert.equal(flags["stripe-checkout-display-items"], true);
   assert.equal(flags["stripe-aggregate-usage"], true);
   assert.equal(flags["stripe-legacy-usage-records"], false); // only aggregate_usage was split out
@@ -141,7 +143,7 @@ test("flags imports and requires of react-stripe-elements", () => {
 });
 
 test("bracket-call patterns are generated, not hand-written", () => {
-  const raw = JSON.parse(require("fs").readFileSync(path.join(__dirname, "..", "data", "stripe-deprecations.json"), "utf8"));
+  const raw = JSON.parse(require("fs").readFileSync(path.join(__dirname, "..", "data", "providers", "stripe.json"), "utf8"));
   for (const entry of raw.deprecations) {
     for (const p of entry.stringPatterns ?? []) {
       assert.ok(!p.includes("\\[\\s*['"), `${entry.id} still has a hand-written bracket pattern`);
@@ -236,4 +238,87 @@ test("extractScripts keeps only JavaScript inside <script> blocks", () => {
   assert.equal(js.split("\n").length, 6); // every line kept
   for (const kept of ["handleB", "handleC", "handleG"]) assert.ok(js.includes(kept), kept);
   for (const dropped of ["handleA", "handleD", "handleE", "handleF"]) assert.ok(!js.includes(dropped), dropped);
+});
+
+// ---- Provider layer ----
+
+/** Writes provider files into a fresh temp folder and returns its path. */
+function providerDir(files: Record<string, unknown>): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sundial-providers-"));
+  for (const [name, content] of Object.entries(files)) {
+    fs.writeFileSync(path.join(dir, name), JSON.stringify(content));
+  }
+  return dir;
+}
+
+/** A minimal valid provider file for tests ("acme" by default). */
+function fakeProvider(id = "acme", entryId = "acme-old-ping") {
+  return {
+    provider: { id, name: "Acme", mentionWords: ["acme"], officialSources: ["docs.acme.test"] },
+    deprecations: [
+      {
+        id: entryId,
+        deprecated: "acme.ping()",
+        patterns: ["\\.ping\\s*\\("],
+        stringPatterns: ["\\bold_flag\\b"],
+        requireProviderMention: true,
+        replacement: "acme.health()",
+        removalDate: null,
+        removedInVersion: null,
+        sourceUrl: "https://docs.acme.test/changelog/ping",
+        note: "Test entry.",
+      },
+    ],
+  };
+}
+
+test("the bundled data ships with exactly one provider: Stripe", () => {
+  const providers = loadProviders();
+  assert.deepEqual(providers.map((p) => [p.id, p.name]), [["stripe", "Stripe"]]);
+  assert.deepEqual(providers[0].mentionWords, ["stripe"]);
+  assert.ok(deprecations.every((d) => d.provider.id === "stripe"));
+});
+
+test("every *.json file in the providers folder is loaded automatically", () => {
+  const stripe = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "data", "providers", "stripe.json"), "utf8"));
+  const dir = providerDir({ "stripe.json": stripe, "acme.json": fakeProvider(), "notes.txt": "ignored" });
+  const providers = loadProviders(dir);
+  assert.deepEqual(providers.map((p) => p.id), ["acme", "stripe"]); // sorted by file name
+
+  // The new provider's entries work end to end, using its own mention words.
+  const all = providers.flatMap((p) => p.deprecations);
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "sundial-code-"));
+  fs.writeFileSync(path.join(tmp, "uses-acme.js"), "const acme = require('acme');\nacme.ping();\nconst x = { old_flag: 1 };\n");
+  fs.writeFileSync(path.join(tmp, "no-mention.js"), "const x = { old_flag: 1 };\n");
+  const found = scan(tmp, all).findings.map((f) => `${f.file}:${f.line} ${f.deprecation.provider.id}/${f.deprecation.id}`);
+  assert.deepEqual(found, ["uses-acme.js:2 acme/acme-old-ping", "uses-acme.js:3 acme/acme-old-ping"]);
+});
+
+test("sourceUrl is checked against the provider's own officialSources", () => {
+  const sources = ["stripe.com", "docs.stripe.com", "github.com/stripe", "github.com/stripe-archive"];
+  assert.ok(isOfficialSource("https://docs.stripe.com/changelog/x", sources));
+  assert.ok(isOfficialSource("https://github.com/stripe-archive/react-stripe-elements", sources));
+  assert.ok(!isOfficialSource("https://github.com/stripe-evil/repo", sources)); // whole path parts only
+  assert.ok(!isOfficialSource("https://docs.stripe.com.evil.test/x", sources)); // exact host only
+  assert.ok(!isOfficialSource("http://docs.stripe.com/x", sources)); // https only
+  assert.ok(!isOfficialSource("not a url", sources));
+
+  // A Stripe link is not an official source for another provider.
+  const wrongSource = fakeProvider();
+  wrongSource.deprecations[0].sourceUrl = "https://docs.stripe.com/changelog";
+  assert.throws(() => loadProviders(providerDir({ "acme.json": wrongSource })), /official sources: docs\.acme\.test/);
+});
+
+test("provider files are validated", () => {
+  // File name must match the provider id.
+  assert.throws(() => loadProviders(providerDir({ "other.json": fakeProvider() })), /must live in acme\.json/);
+  // Deprecation ids must be unique across providers.
+  const dup = providerDir({ "acme.json": fakeProvider("acme", "same-id"), "beta.json": fakeProvider("beta", "same-id") });
+  assert.throws(() => loadProviders(dup), /duplicate id "same-id"/);
+  // Missing provider settings are reported.
+  const noWords = fakeProvider();
+  (noWords.provider as { mentionWords: string[] }).mentionWords = [];
+  assert.throws(() => loadProviders(providerDir({ "acme.json": noWords })), /"mentionWords" must be a non-empty array/);
+  // An empty folder is an error, not a silent "nothing found".
+  assert.throws(() => loadProviders(providerDir({})), /no provider files/);
 });

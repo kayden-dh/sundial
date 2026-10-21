@@ -1,6 +1,6 @@
 // Walks a folder, reads every JavaScript/TypeScript file (plus inline
 // <script> blocks in .html/.htm/.php pages), and checks it
-// against the deprecation patterns. Comments are removed first (see strip.ts),
+// against the deprecation patterns of every provider. Comments are removed first (see strip.ts),
 // and each pattern runs over the whole file, so a call split across several
 // lines (stripe.sources\n  .create(...)) is still found.
 
@@ -114,12 +114,16 @@ function scanFile(filePath: string, baseDir: string, deprecations: Deprecation[]
   const findings: Finding[] = [];
 
   // Some entries match generic names (like display_items) and only count in
-  // files that have something to do with Stripe. Checked on the raw text, so
-  // a mention in an import, comment or string counts.
-  const mentionsStripe = /stripe/i.test(source);
+  // files that mention their provider (e.g. "stripe"). Checked once per
+  // provider on the raw text, so an import, comment or string counts.
+  const mentions = new Map<string, boolean>();
+  const mentionsProvider = (d: Deprecation) => {
+    if (!mentions.has(d.provider.id)) mentions.set(d.provider.id, d.provider.mentionRegex.test(source));
+    return mentions.get(d.provider.id)!;
+  };
 
   for (const deprecation of deprecations) {
-    if (deprecation.requireStripeInFile && !mentionsStripe) continue;
+    if (deprecation.requireProviderMention && !mentionsProvider(deprecation)) continue;
 
     // Several patterns of one entry may hit the same line; report it once.
     const linesSeen = new Set<number>();

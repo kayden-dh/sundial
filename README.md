@@ -1,11 +1,15 @@
 # Sundial
 
-Sundial warns you when your code uses Stripe API features that are deprecated
-or already removed, and tells you what to use instead.
+Sundial is an API deprecation scanner. It warns you when your code uses API
+features that are deprecated or already removed, and tells you what to use
+instead, with a link to the provider's official docs.
+
+**Supported providers:** Stripe (more can be added as data files, see
+[Adding a new provider](#adding-a-new-provider)).
 
 **Stage 1** is a small command-line tool: it scans a folder of
-JavaScript/TypeScript code using pattern matching against a hand-checked
-list of Stripe deprecations.
+JavaScript/TypeScript code using pattern matching against hand-checked lists
+of deprecations, one list per API provider.
 
 ## Quick start (npx)
 
@@ -40,13 +44,18 @@ To get the `sundial` command on your machine from this checkout, run
 Example output:
 
 ```
+Sundial: scanned 16 file(s) in ./test-fixtures for Stripe deprecations
+
 legacy/checkout.ts
   Line 10: return stripe.handleCardPayment(clientSecret, card);
+    Provider:    Stripe
     Deprecated:  Stripe.js handleCardPayment() / confirmPaymentIntent()
     Use instead: stripe.confirmCardPayment(clientSecret, { payment_method: { card: cardElement } })
     Removed:     2026-03-25 (API version 2026-03-25.dahlia)
     Docs:        https://docs.stripe.com/changelog/dahlia/2026-03-25/remove-legacy-stripejs-methods
     Rule:        stripejs-legacy-payment-intent-methods
+
+Found 33 deprecated API usage(s) in 11 file(s) (Stripe: 33).
 ```
 
 **Exit codes**: `0` = nothing found, `1` = deprecated usage found, `2` = error.
@@ -85,9 +94,10 @@ This lets you fail a CI build when deprecated calls appear.
    `stripe["handleCardPayment"](...)`, `stripe?.["redirectToCheckout"]?.(...)`.
    These patterns are generated from each entry's `methods` list, so you
    don't write them by hand.
-5. Entries with `requireStripeInFile` (generic names like `display_items` and
-   `aggregate_usage`) only report matches in files that mention "stripe"
-   somewhere, in any case. An import, a comment or a variable name all count.
+5. Entries with `requireProviderMention` (generic names like `display_items`
+   and `aggregate_usage`) only report matches in files that contain one of
+   the provider's `mentionWords` (for Stripe: "stripe"), in any case. An
+   import, a comment or a variable name all count.
 
 ### Known limitations (Stage 1)
 
@@ -113,20 +123,22 @@ This lets you fail a CI build when deprecated calls appear.
   handler that checks `event.data.object.object === "source"`. A plain
   `source:` key is too common to flag safely: it's also used with
   `customers.createSource({ source: token })` and card tokens.
-- `requireStripeInFile` can miss a real Stripe file that never says
+- `requireProviderMention` can miss a real Stripe file that never says
   "stripe", for example a helper that receives a Checkout Session object as
-  a parameter. It can also be triggered by unrelated words that contain
-  "stripe", like "pinstripe".
-- A **removal date** means Stripe removed the feature in that API version.
+  a parameter. It can also be triggered by unrelated words that contain a
+  mention word, like "pinstripe".
+- A **removal date** means the provider removed the feature in that API
+  version (Stripe versions its API this way).
   Accounts pinned to an older API version may still have it working, but
   upgrading will break it.
 
 ## Project layout
 
 ```
-data/stripe-deprecations.json   the deprecation list (edit this to add rules)
+data/providers/stripe.json      Stripe's settings + deprecation list
+                                (one file per provider, all loaded automatically)
 src/cli.ts                      command-line entry point
-src/deprecations.ts             loads + validates the JSON list
+src/deprecations.ts             loads + validates every provider file
 src/scanner.ts                  walks folders and matches patterns
 src/strip.ts                    removes comments / string contents
 src/html.ts                     pulls <script> blocks out of .html/.php pages
@@ -148,10 +160,11 @@ npm test
 
 ## Adding a new deprecation
 
-1. **Find an official source first.** Use Stripe's docs or changelog
-   (`https://docs.stripe.com/changelog`). If you can't find official wording
-   saying it's deprecated or removed, don't add it.
-2. Add an entry to `data/stripe-deprecations.json`:
+1. **Find an official source first.** Use the provider's docs or changelog
+   (for Stripe: `https://docs.stripe.com/changelog`). If you can't find
+   official wording saying it's deprecated or removed, don't add it.
+2. Add an entry to the provider's `deprecations` list, for Stripe in
+   `data/providers/stripe.json`:
 
    ```json
    {
@@ -175,11 +188,11 @@ npm test
    | `stringPatterns` | one of these two | Regexes checked against code with only comments removed. Use when the deprecated thing is inside a string: URLs (`/v1/sources`), element names (`elements.create("idealBank")`), quoted keys. |
    | `methods` | no | Method names this entry covers: `"handleCardPayment"`, or `"invoices.retrieveUpcoming"` when it must be called on that object. Sundial generates bracket-call patterns (`stripe["handleCardPayment"](...)`) from these. Still write the normal dot-call regex in `patterns`. |
    | `ignoreCallsOn` | no | Objects whose same-named method is fine, e.g. `["customers"]` so `stripe.customers["createSource"](...)` isn't flagged. |
-   | `requireStripeInFile` | no | `true` = only report in files that mention "stripe" (any case). Use for generic names other code might share. |
+   | `requireProviderMention` | no | `true` = only report in files that contain one of the provider's `mentionWords` (any case). Use for generic names other code might share. |
    | `replacement` | yes | What to use instead |
-   | `removalDate` | no | `YYYY-MM-DD`, or `null` if Stripe hasn't published one. **Never guess.** |
-   | `removedInVersion` | no | Stripe API version that removed it, or `null` |
-   | `sourceUrl` | yes | Must be on `stripe.com`, `docs.stripe.com`, or Stripe's GitHub (`github.com/stripe/`, `github.com/stripe-archive/`) |
+   | `removalDate` | no | `YYYY-MM-DD`, or `null` if the provider hasn't published one. **Never guess.** |
+   | `removedInVersion` | no | API version that removed it, or `null` |
+   | `sourceUrl` | yes | An `https` link on one of the provider's `officialSources` (for Stripe: `stripe.com`, `docs.stripe.com`, `github.com/stripe/...`, `github.com/stripe-archive/...`) |
    | `note` | yes | Short extra context |
 
 3. **Writing patterns.** They're regular expressions inside JSON strings, so
@@ -194,9 +207,44 @@ npm test
    replacement to `test-fixtures/modern/`, then update the expected results in
    `src/scanner.test.ts` and run `npm test`.
 
-Sundial checks the file when it starts. A bad regex, missing field,
-duplicate id or non-Stripe source URL stops it with an error that names
-the entry.
+Sundial checks every provider file when it starts. A bad regex, missing
+field, duplicate id, or a source URL outside the provider's official sources
+stops it with an error that names the file and entry.
+
+## Adding a new provider
+
+Each API provider is one JSON file in `data/providers/`. Sundial loads every
+`*.json` file there automatically, so adding an API means adding a file. No
+code changes are needed.
+
+1. Create `data/providers/<id>.json`. The file name must match the provider
+   `id`:
+
+   ```json
+   {
+     "provider": {
+       "id": "acme",
+       "name": "Acme",
+       "mentionWords": ["acme"],
+       "officialSources": ["docs.acme.com", "github.com/acme"]
+     },
+     "deprecations": []
+   }
+   ```
+
+   | Field | Meaning |
+   |---|---|
+   | `id` | Short kebab-case name; also the file name (`acme` -> `acme.json`) |
+   | `name` | Display name shown in reports |
+   | `mentionWords` | Words that count as a mention of this provider in a file (any case), used by `requireProviderMention` entries |
+   | `officialSources` | Where `sourceUrl` links may point: a domain (`docs.acme.com`, exact host) or a domain plus path (`github.com/acme`, which allows `github.com/acme/...` but not `github.com/acme-other/...`). No `https://`. |
+
+2. Add deprecation entries as described in
+   [Adding a new deprecation](#adding-a-new-deprecation). Entry ids must be
+   unique across all providers, so prefix them with the provider id
+   (`acme-...`).
+3. Add fixtures under `test-fixtures/` and expected results in
+   `src/scanner.test.ts`, then run `npm test`.
 
 ## Publishing to npm
 
@@ -217,7 +265,7 @@ Scoped packages are private by default on npm, so
 
 MIT, see [LICENSE](LICENSE).
 
-## Sources for the current list
+## Sources for the current Stripe list
 
 - Sources API: https://docs.stripe.com/sources
 - Legacy Stripe.js methods (2026-03-25.dahlia): https://docs.stripe.com/changelog/dahlia/2026-03-25/remove-legacy-stripejs-methods

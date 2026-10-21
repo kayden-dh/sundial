@@ -1,5 +1,18 @@
 {
-  "$comment": "Known Stripe deprecations. Every entry must link to official Stripe docs or changelog. 'patterns' are JavaScript regular expressions (as strings, so backslashes are doubled) checked against code with comments and string contents removed. 'stringPatterns' are checked against code with only comments removed, for things that live inside strings (URLs, element names). 'removalDate' is null when Stripe hasn't published one. 'methods' lists method names used to generate bracket-call patterns automatically. See README for how to add entries.",
+  "$comment": "Stripe deprecations for Sundial. Every entry must link to an official source listed in provider.officialSources. 'patterns' are JavaScript regular expressions (as strings, so backslashes are doubled) checked against code with comments and string contents removed. 'stringPatterns' are checked against code with only comments removed, for things that live inside strings (URLs, element names). 'methods' lists method names used to generate bracket-call patterns automatically. 'requireProviderMention' entries only count in files that contain one of provider.mentionWords. 'removalDate' is null when the provider hasn't published one. See README for how to add entries.",
+  "provider": {
+    "id": "stripe",
+    "name": "Stripe",
+    "mentionWords": [
+      "stripe"
+    ],
+    "officialSources": [
+      "stripe.com",
+      "docs.stripe.com",
+      "github.com/stripe",
+      "github.com/stripe-archive"
+    ]
+  },
   "deprecations": [
     {
       "id": "stripe-sources-api",
@@ -154,7 +167,7 @@
       "stringPatterns": [
         "\\baggregate_usage\\b"
       ],
-      "requireStripeInFile": true,
+      "requireProviderMention": true,
       "replacement": "Billing Meters: back the metered price with a meter (recurring.meter) and send meter events (stripe.billing.meterEvents.create)",
       "removalDate": "2025-03-31",
       "removedInVersion": "2025-03-31.basil",
@@ -186,7 +199,7 @@
       "stringPatterns": [
         "\\bdisplay_items\\b"
       ],
-      "requireStripeInFile": true,
+      "requireProviderMention": true,
       "replacement": "line_items: expand it when creating/retrieving the session (expand: ['line_items']) or call stripe.checkout.sessions.listLineItems(sessionId)",
       "removalDate": "2020-08-27",
       "removedInVersion": "2020-08-27",

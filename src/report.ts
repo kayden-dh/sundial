@@ -6,15 +6,19 @@ import type { ScanResult } from "./scanner";
 /** Long lines are cut so the report stays readable. */
 const MAX_CODE_LENGTH = 120;
 
-export function formatReport(result: ScanResult, target: string): string {
+/**
+ * @param providerNames display names of the providers that were checked,
+ *   e.g. ["Stripe"]. Shown in the header so it's clear what was scanned for.
+ */
+export function formatReport(result: ScanResult, target: string, providerNames: string[]): string {
   const { findings, filesScanned } = result;
   const out: string[] = [];
 
-  out.push(`Sundial: scanned ${filesScanned} file(s) in ${target}`);
+  out.push(`Sundial: scanned ${filesScanned} file(s) in ${target} for ${providerNames.join(", ")} deprecations`);
   out.push("");
 
   if (findings.length === 0) {
-    out.push("No deprecated Stripe usage found.");
+    out.push("No deprecated API usage found.");
     return out.join("\n");
   }
 
@@ -31,6 +35,7 @@ export function formatReport(result: ScanResult, target: string): string {
     for (const f of fileFindings) {
       const d = f.deprecation;
       out.push(`  Line ${f.line}: ${truncate(f.code)}`);
+      out.push(`    Provider:    ${d.provider.name}`);
       out.push(`    Deprecated:  ${d.deprecated}`);
       out.push(`    Use instead: ${d.replacement}`);
       out.push(`    Removed:     ${describeRemoval(d.removalDate, d.removedInVersion)}`);
@@ -40,15 +45,21 @@ export function formatReport(result: ScanResult, target: string): string {
     }
   }
 
-  const fileCount = byFile.size;
-  out.push(`Found ${findings.length} deprecated usage(s) in ${fileCount} file(s).`);
+  // Count findings per provider, in the order providers first appear.
+  const perProvider = new Map<string, number>();
+  for (const f of findings) {
+    perProvider.set(f.deprecation.provider.name, (perProvider.get(f.deprecation.provider.name) ?? 0) + 1);
+  }
+  const breakdown = [...perProvider].map(([name, count]) => `${name}: ${count}`).join(", ");
+
+  out.push(`Found ${findings.length} deprecated API usage(s) in ${byFile.size} file(s) (${breakdown}).`);
   return out.join("\n");
 }
 
 function describeRemoval(date: string | null, version: string | null): string {
   if (!date) return "no removal date announced yet";
-  // Stripe removals are tied to API versions: accounts pinned to an older
-  // version may still work, so say which version removed it.
+  // Removals are often tied to API versions (e.g. Stripe's): accounts pinned
+  // to an older version may still work, so say which version removed it.
   return version ? `${date} (API version ${version})` : date;
 }
 

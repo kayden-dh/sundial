@@ -1,15 +1,18 @@
 {
   "name": "@kayden-dh/sundial",
   "version": "0.1.0",
-  "description": "Warns you when your code uses deprecated or removed Stripe API features.",
+  "description": "API deprecation scanner: warns when your code uses deprecated or removed API features and tells you what to use instead. Currently supports Stripe.",
   "keywords": [
-    "stripe",
+    "api",
     "deprecation",
     "deprecated",
-    "api",
+    "api-deprecation",
     "scanner",
+    "static-analysis",
+    "lint",
     "cli",
-    "migration"
+    "migration",
+    "stripe"
   ],
   "license": "MIT",
   "author": "kayden-dh",
